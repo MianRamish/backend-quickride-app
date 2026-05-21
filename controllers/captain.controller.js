@@ -12,9 +12,21 @@ module.exports.registerCaptain = asyncHandler(async (req, res) => {
     return res.status(400).json(errors.array());
   }
 
-  const { fullname, email, password, phone, vehicle, documents = {}, profilePhotoUrl = "", vehiclePhotoUrl = "", backgroundCheckConsent = false } = req.body;
+  const {
+    fullname,
+    email,
+    password,
+    phone,
+    vehicle,
+    documents = {},
+    profilePhotoUrl = "",
+    vehiclePhotoUrl = "",
+    backgroundCheckConsent = false,
+  } = req.body;
 
-  const alreadyExists = await captainModel.findOne({ email });
+  const normalizedEmail = String(email).toLowerCase().trim();
+
+  const alreadyExists = await captainModel.findOne({ email: normalizedEmail });
 
   if (alreadyExists) {
     return res.status(400).json({ message: "Captain already exists" });
@@ -23,7 +35,7 @@ module.exports.registerCaptain = asyncHandler(async (req, res) => {
   const captain = await captainService.createCaptain(
     fullname.firstname,
     fullname.lastname,
-    email,
+    normalizedEmail,
     password,
     phone,
     vehicle.color,
@@ -32,22 +44,32 @@ module.exports.registerCaptain = asyncHandler(async (req, res) => {
     vehicle.type
   );
 
+  captain.emailVerified = process.env.DISABLE_EMAIL_VERIFICATION === "true";
   captain.profilePhotoUrl = profilePhotoUrl || "";
   captain.vehiclePhotoUrl = vehiclePhotoUrl || "";
+
   captain.documents = {
     ...captain.documents,
     ...documents,
-    backgroundCheckConsent: Boolean(backgroundCheckConsent || documents.backgroundCheckConsent),
-    backgroundCheckStatus: backgroundCheckConsent || documents.backgroundCheckConsent ? "pending" : "not_started",
+    backgroundCheckConsent: Boolean(
+      backgroundCheckConsent || documents.backgroundCheckConsent
+    ),
+    backgroundCheckStatus:
+      backgroundCheckConsent || documents.backgroundCheckConsent
+        ? "pending"
+        : "not_started",
   };
+
   captain.verificationStatus = "pending";
   captain.isApproved = false;
   captain.status = "inactive";
   captain.availabilityStatus = "offline";
+
   await captain.save();
 
   try {
     const Vehicle = require("../models/vehicle.model");
+
     const linkedVehicle = await Vehicle.create({
       captain: captain._id,
       color: vehicle.color || "",
@@ -56,11 +78,13 @@ module.exports.registerCaptain = asyncHandler(async (req, res) => {
       isActive: true,
       docs: {
         registrationUrl: captain.documents?.vehicleRegistrationUrl || "",
-        registrationExpiry: captain.documents?.vehicleRegistrationExpiry || null,
+        registrationExpiry:
+          captain.documents?.vehicleRegistrationExpiry || null,
         insuranceUrl: captain.documents?.insuranceUrl || "",
         insuranceExpiry: captain.documents?.insuranceExpiry || null,
       },
     });
+
     captain.activeVehicle = linkedVehicle._id;
     await captain.save();
   } catch (e) {
@@ -68,9 +92,13 @@ module.exports.registerCaptain = asyncHandler(async (req, res) => {
   }
 
   const token = captain.generateAuthToken();
-  res
-    .status(201)
-    .json({ message: "Captain registered successfully. Your account is pending admin verification.", token, captain });
+
+  res.status(201).json({
+    message:
+      "Captain registered successfully. Your account is pending admin verification.",
+    token,
+    captain,
+  });
 });
 
 module.exports.verifyEmail = asyncHandler(async (req, res) => {
