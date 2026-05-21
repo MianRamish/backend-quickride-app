@@ -4,6 +4,7 @@ const userService = require("../services/user.service");
 const { validationResult } = require("express-validator");
 const blacklistTokenModel = require("../models/blacklistToken.model");
 const jwt = require("jsonwebtoken");
+const autoVerifyEmail = process.env.DISABLE_EMAIL_VERIFICATION === "true";
 
 module.exports.registerUser = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
@@ -14,7 +15,9 @@ module.exports.registerUser = asyncHandler(async (req, res) => {
 
   const { fullname, email, password, phone } = req.body;
 
-  const alreadyExists = await userModel.findOne({ email });
+  const normalizedEmail = String(email).toLowerCase().trim();
+
+  const alreadyExists = await userModel.findOne({ email: normalizedEmail });
 
   if (alreadyExists) {
     return res.status(400).json({ message: "User already exists" });
@@ -23,15 +26,23 @@ module.exports.registerUser = asyncHandler(async (req, res) => {
   const user = await userService.createUser(
     fullname.firstname,
     fullname.lastname,
-    email,
+    normalizedEmail,
     password,
     phone
   );
 
+  if (process.env.DISABLE_EMAIL_VERIFICATION === "true") {
+    user.emailVerified = true;
+    await user.save();
+  }
+
   const token = user.generateAuthToken();
-  res
-    .status(201)
-    .json({ message: "User registered successfully", token, user });
+
+  res.status(201).json({
+    message: "User registered successfully",
+    token,
+    user,
+  });
 });
 
 module.exports.verifyEmail = asyncHandler(async (req, res) => {
