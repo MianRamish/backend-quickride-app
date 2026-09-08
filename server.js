@@ -19,11 +19,7 @@ const rideRoutes = require("./routes/ride.routes");
 const mailRoutes = require("./routes/mail.routes");
 const keepServerRunning = require("./services/active.service");
 const dbStream = require("./services/logging.service");
-<<<<<<< HEAD
 const dbConnection = require("./config/db");
-=======
-require("./config/db");
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 const PORT = process.env.PORT || 4000;
 
 if (process.env.ENVIRONMENT == "production") {
@@ -40,7 +36,6 @@ const allowedOrigins = (process.env.CLIENT_URL || "")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-<<<<<<< HEAD
 const isAllowedOrigin = (origin) => {
   if (!origin) return true;
   if (allowedOrigins.includes(origin)) return true;
@@ -51,18 +46,6 @@ const isAllowedOrigin = (origin) => {
 
 app.use(cors({
   origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
-=======
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    if (/\.ngrok-free\.app$/.test(origin) || /\.trycloudflare\.com$/.test(origin)) {
-      return callback(null, true);
-    }
-    return callback(null, true);
-  },
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   credentials: true,
   allowedHeaders: ["Content-Type", "Authorization", "token", "ngrok-skip-browser-warning"],
 }));
@@ -99,7 +82,6 @@ app.use('/api/admin', adminRoutes);
 app.use('/admin', adminRoutes); // compatibility alias for admin login/API
 app.use("/mail", mailRoutes);
 
-<<<<<<< HEAD
 
 
 dbConnection.once("open", () => {
@@ -109,8 +91,6 @@ dbConnection.once("open", () => {
   require("./services/operations.service").getConfig({ fresh: true }).catch(() => {});
 });
 
-=======
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 server.listen(PORT, () => {
   console.log("Server is listening on port", PORT);
 });
