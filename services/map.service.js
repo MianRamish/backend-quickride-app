@@ -1,27 +1,18 @@
 const axios = require("axios");
 const captainModel = require("../models/captain.model");
-<<<<<<< HEAD
 const NIGERIA_PLACES = require("../data/nigeria.places");
-=======
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 
 const NOMINATIM_URL = process.env.NOMINATIM_URL || "https://nominatim.openstreetmap.org";
 const PHOTON_URL = process.env.PHOTON_URL || "https://photon.komoot.io";
 const OSRM_URL = process.env.OSRM_URL || "https://router.project-osrm.org";
-<<<<<<< HEAD
 const APP_USER_AGENT = process.env.GEOCODING_USER_AGENT || "QuickRideNigeria/1.1";
 const GEOCODING_CONTACT_EMAIL = String(process.env.GEOCODING_CONTACT_EMAIL || "").trim();
 const MAP_COUNTRY_CODES = (process.env.MAP_COUNTRY_CODES || "ng")
-=======
-const APP_USER_AGENT = process.env.GEOCODING_USER_AGENT || "QuickRide/1.0 (support@quickride.local)";
-const MAP_COUNTRY_CODES = (process.env.MAP_COUNTRY_CODES || "ca,us")
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   .split(",")
   .map((code) => code.trim().toLowerCase())
   .filter(Boolean)
   .join(",");
 
-<<<<<<< HEAD
 const NIGERIA_BBOX = process.env.MAP_SEARCH_BBOX || "2.4,4.2,14.7,13.9";
 const bboxParts = NIGERIA_BBOX.split(",").map(Number);
 const NOMINATIM_VIEWBOX = bboxParts.length === 4 && bboxParts.every(Number.isFinite)
@@ -157,74 +148,6 @@ const disableProviderTemporarily = (provider, error) => {
 const formatDistance = (meters = 0) => {
   if (meters < 1000) return `${Math.round(meters)} m`;
   return `${(meters / 1000).toFixed(1)} km`;
-=======
-const NORTH_AMERICA_BBOX = process.env.MAP_SEARCH_BBOX || "-168,15,-52,84";
-
-const KNOWN_PLACE_COORDINATES = {
-  // Canada
-  "canada": { ltd: 56.1304, lng: -106.3468, displayName: "Canada" },
-  "toronto": { ltd: 43.6532, lng: -79.3832, displayName: "Toronto, ON, Canada" },
-  "toronto canada": { ltd: 43.6532, lng: -79.3832, displayName: "Toronto, ON, Canada" },
-  "ontario": { ltd: 43.6532, lng: -79.3832, displayName: "Toronto, ON, Canada" },
-  "ontario canada": { ltd: 43.6532, lng: -79.3832, displayName: "Toronto, ON, Canada" },
-  "ottawa": { ltd: 45.4215, lng: -75.6972, displayName: "Ottawa, ON, Canada" },
-  "montreal": { ltd: 45.5017, lng: -73.5673, displayName: "Montreal, QC, Canada" },
-  "vancouver": { ltd: 49.2827, lng: -123.1207, displayName: "Vancouver, BC, Canada" },
-  "calgary": { ltd: 51.0447, lng: -114.0719, displayName: "Calgary, AB, Canada" },
-  "edmonton": { ltd: 53.5461, lng: -113.4938, displayName: "Edmonton, AB, Canada" },
-  "winnipeg": { ltd: 49.8951, lng: -97.1384, displayName: "Winnipeg, MB, Canada" },
-  "quebec city": { ltd: 46.8139, lng: -71.2080, displayName: "Quebec City, QC, Canada" },
-  "halifax": { ltd: 44.6488, lng: -63.5752, displayName: "Halifax, NS, Canada" },
-  "niagara falls": { ltd: 43.0896, lng: -79.0849, displayName: "Niagara Falls, ON, Canada" },
-
-  // United States
-  "united states": { ltd: 39.8283, lng: -98.5795, displayName: "United States" },
-  "usa": { ltd: 39.8283, lng: -98.5795, displayName: "United States" },
-  "new york": { ltd: 40.7128, lng: -74.0060, displayName: "New York, NY, USA" },
-  "new york city": { ltd: 40.7128, lng: -74.0060, displayName: "New York, NY, USA" },
-  "los angeles": { ltd: 34.0522, lng: -118.2437, displayName: "Los Angeles, CA, USA" },
-  "chicago": { ltd: 41.8781, lng: -87.6298, displayName: "Chicago, IL, USA" },
-  "houston": { ltd: 29.7604, lng: -95.3698, displayName: "Houston, TX, USA" },
-  "phoenix": { ltd: 33.4484, lng: -112.0740, displayName: "Phoenix, AZ, USA" },
-  "philadelphia": { ltd: 39.9526, lng: -75.1652, displayName: "Philadelphia, PA, USA" },
-  "san antonio": { ltd: 29.4241, lng: -98.4936, displayName: "San Antonio, TX, USA" },
-  "san diego": { ltd: 32.7157, lng: -117.1611, displayName: "San Diego, CA, USA" },
-  "dallas": { ltd: 32.7767, lng: -96.7970, displayName: "Dallas, TX, USA" },
-  "san jose": { ltd: 37.3382, lng: -121.8863, displayName: "San Jose, CA, USA" },
-  "san francisco": { ltd: 37.7749, lng: -122.4194, displayName: "San Francisco, CA, USA" },
-  "seattle": { ltd: 47.6062, lng: -122.3321, displayName: "Seattle, WA, USA" },
-  "boston": { ltd: 42.3601, lng: -71.0589, displayName: "Boston, MA, USA" },
-  "miami": { ltd: 25.7617, lng: -80.1918, displayName: "Miami, FL, USA" },
-  "washington dc": { ltd: 38.9072, lng: -77.0369, displayName: "Washington, DC, USA" },
-};
-
-const getKnownPlaceResult = (address) => {
-  const key = String(address || "").trim().toLowerCase().replace(/\s+/g, " ");
-  const exact = KNOWN_PLACE_COORDINATES[key];
-  if (exact) return { ...exact, provider: "known-place-fallback" };
-
-  const partialKey = Object.keys(KNOWN_PLACE_COORDINATES).find((place) =>
-    key.includes(place) || place.includes(key)
-  );
-
-  if (!partialKey) return null;
-  return { ...KNOWN_PLACE_COORDINATES[partialKey], provider: "known-place-fallback" };
-};
-
-
-const http = axios.create({
-  timeout: 15000,
-  headers: {
-    "User-Agent": APP_USER_AGENT,
-    "Accept-Language": "en",
-  },
-});
-
-const formatDistance = (meters = 0) => {
-  const miles = meters / 1609.344;
-  if (miles < 0.1) return `${Math.round(meters * 3.28084)} ft`;
-  return `${miles.toFixed(1)} mi`;
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 };
 
 const formatDuration = (seconds = 0) => {
@@ -254,10 +177,6 @@ const calculateHaversineDistance = (from, to) => {
 };
 
 const getApproximateRoute = (originCoordinates, destinationCoordinates) => {
-<<<<<<< HEAD
-=======
-  // Road routes are usually longer than straight-line distance.
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   const roadMultiplier = 1.35;
   const averageSpeedMetersPerSecond = 48_000 / 3600;
   const distance = Math.max(
@@ -267,19 +186,8 @@ const getApproximateRoute = (originCoordinates, destinationCoordinates) => {
   const duration = distance / averageSpeedMetersPerSecond;
 
   return {
-<<<<<<< HEAD
     distance: { text: formatDistance(distance), value: Math.round(distance) },
     duration: { text: formatDuration(duration), value: Math.round(duration) },
-=======
-    distance: {
-      text: formatDistance(distance),
-      value: Math.round(distance),
-    },
-    duration: {
-      text: formatDuration(duration),
-      value: Math.round(duration),
-    },
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     originCoordinates,
     destinationCoordinates,
     route: [
@@ -292,7 +200,6 @@ const getApproximateRoute = (originCoordinates, destinationCoordinates) => {
 };
 
 const getNominatimResult = async (address) => {
-<<<<<<< HEAD
   if (!isProviderAvailable("nominatim")) return null;
   try {
     const response = await http.get(`${NOMINATIM_URL}/search`, {
@@ -350,72 +257,15 @@ const getPhotonResult = async (address) => {
     disableProviderTemporarily("photon", error);
     throw error;
   }
-=======
-  const response = await http.get(`${NOMINATIM_URL}/search`, {
-    params: {
-      q: address,
-      format: "jsonv2",
-      addressdetails: 1,
-      limit: 1,
-      countrycodes: MAP_COUNTRY_CODES,
-      bounded: 1,
-      viewbox: NORTH_AMERICA_BBOX,
-    },
-  });
-
-  const result = response.data?.[0];
-  if (!result) return null;
-
-  return {
-    ltd: Number(result.lat),
-    lng: Number(result.lon),
-    displayName: result.display_name,
-    provider: "nominatim",
-  };
-};
-
-const getPhotonResult = async (address) => {
-  const response = await http.get(`${PHOTON_URL}/api/`, {
-    params: {
-      q: address,
-      limit: 1,
-      lang: "en",
-      bbox: NORTH_AMERICA_BBOX,
-    },
-  });
-
-  const feature = response.data?.features?.[0];
-  const coordinates = feature?.geometry?.coordinates;
-  if (!coordinates || coordinates.length < 2) return null;
-
-  const props = feature.properties || {};
-  const displayName = [props.name, props.city, props.state, props.country]
-    .filter(Boolean)
-    .join(", ");
-
-  return {
-    ltd: Number(coordinates[1]),
-    lng: Number(coordinates[0]),
-    displayName: displayName || address,
-    provider: "photon",
-  };
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 };
 
 const getFirstAddressResult = async (address) => {
   const cleanAddress = String(address || "").trim();
-<<<<<<< HEAD
   if (!cleanAddress) throw new Error("Address is required");
-=======
-  if (!cleanAddress) {
-    throw new Error("Address is required");
-  }
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 
   const knownPlaceResult = getKnownPlaceResult(cleanAddress);
   if (knownPlaceResult) return knownPlaceResult;
 
-<<<<<<< HEAD
   const localCandidates = getLocalPlaceSuggestions(cleanAddress, 6);
   if (localCandidates.length === 1) {
     const uniqueLocalResult = getKnownPlaceResult(localCandidates[0]);
@@ -428,10 +278,6 @@ const getFirstAddressResult = async (address) => {
   }
 
   const errors = [];
-=======
-  const errors = [];
-
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   try {
     const nominatimResult = await getNominatimResult(cleanAddress);
     if (nominatimResult) return nominatimResult;
@@ -447,7 +293,6 @@ const getFirstAddressResult = async (address) => {
   }
 
   throw new Error(
-<<<<<<< HEAD
     `No location found for "${cleanAddress}". Select one of the suggested Nigerian locations or enter a more specific address.${errors.length ? ` (${errors.join(" | ")})` : ""}`
   );
 };
@@ -476,20 +321,6 @@ module.exports.getAddressCoordinate = async (address) => getFirstAddressResult(a
 
 module.exports.getDistanceTime = async (origin, destination) => {
   if (!origin || !destination) throw new Error("Origin and destination are required");
-=======
-    `No location found for "${cleanAddress}". Please choose a more specific address from the suggestions. ${errors.join(" | ")}`
-  );
-};
-
-module.exports.getAddressCoordinate = async (address) => {
-  return getFirstAddressResult(address);
-};
-
-module.exports.getDistanceTime = async (origin, destination) => {
-  if (!origin || !destination) {
-    throw new Error("Origin and destination are required");
-  }
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 
   const [originCoordinates, destinationCoordinates] = await Promise.all([
     getFirstAddressResult(origin),
@@ -500,7 +331,6 @@ module.exports.getDistanceTime = async (origin, destination) => {
 
   try {
     const response = await http.get(`${OSRM_URL}/route/v1/driving/${coordinates}`, {
-<<<<<<< HEAD
       timeout: 7000,
       params: { overview: "full", geometries: "geojson", alternatives: false, steps: false },
     });
@@ -512,32 +342,6 @@ module.exports.getDistanceTime = async (origin, destination) => {
     return {
       distance: { text: formatDistance(route.distance), value: Math.round(route.distance) },
       duration: { text: formatDuration(route.duration), value: Math.round(route.duration) },
-=======
-      params: {
-        overview: "full",
-        geometries: "geojson",
-        alternatives: false,
-        steps: false,
-      },
-    });
-
-    const route = response.data?.routes?.[0];
-    if (!route) {
-      throw new Error(response.data?.message || "No OSRM route found");
-    }
-
-    const routeCoordinates = (route.geometry?.coordinates || []).map(([lng, lat]) => [lat, lng]);
-
-    return {
-      distance: {
-        text: formatDistance(route.distance),
-        value: Math.round(route.distance),
-      },
-      duration: {
-        text: formatDuration(route.duration),
-        value: Math.round(route.duration),
-      },
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
       originCoordinates,
       destinationCoordinates,
       route: routeCoordinates,
@@ -545,16 +349,11 @@ module.exports.getDistanceTime = async (origin, destination) => {
       approximate: false,
     };
   } catch (err) {
-<<<<<<< HEAD
     console.warn("OSRM route unavailable, using approximate route:", err.message);
-=======
-    console.warn("OSRM route failed, using approximate distance fallback:", err.message);
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     return getApproximateRoute(originCoordinates, destinationCoordinates);
   }
 };
 
-<<<<<<< HEAD
 module.exports.getAutoCompleteSuggestions = async (input, userLocation = null) => {
   const cleanInput = String(input || "").trim();
   if (!cleanInput) throw new Error("query is required");
@@ -582,60 +381,11 @@ module.exports.getAutoCompleteSuggestions = async (input, userLocation = null) =
   const items = [...new Set([...localSuggestions, ...remoteSuggestions])].slice(0, 6);
   suggestionCache.set(cacheKey, { createdAt: Date.now(), items });
   return items;
-=======
-module.exports.getAutoCompleteSuggestions = async (input) => {
-  const cleanInput = String(input || "").trim();
-  if (!cleanInput) {
-    throw new Error("query is required");
-  }
-
-  try {
-    const response = await http.get(`${NOMINATIM_URL}/search`, {
-      params: {
-        q: cleanInput,
-        format: "jsonv2",
-        addressdetails: 1,
-        limit: 6,
-        countrycodes: MAP_COUNTRY_CODES,
-        bounded: 1,
-        viewbox: NORTH_AMERICA_BBOX,
-      },
-    });
-
-    const nominatimSuggestions = (response.data || [])
-      .map((place) => place.display_name)
-      .filter(Boolean);
-
-    if (nominatimSuggestions.length) {
-      return [...new Set(nominatimSuggestions)];
-    }
-  } catch (err) {
-    console.warn("Nominatim suggestions failed, trying Photon:", err.message);
-  }
-
-  try {
-    const response = await http.get(`${PHOTON_URL}/api/`, {
-      params: { q: cleanInput, limit: 6, lang: "en", bbox: NORTH_AMERICA_BBOX },
-    });
-
-    return [...new Set((response.data?.features || []).map((feature) => {
-      const props = feature.properties || {};
-      return [props.name, props.city, props.state, props.country].filter(Boolean).join(", ");
-    }).filter(Boolean))];
-  } catch (err) {
-    console.warn("Photon suggestions failed:", err.message);
-    return [];
-  }
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 };
 
 module.exports.getCaptainsInTheRadius = async (ltd, lng, radius, vehicleType) => {
   try {
-<<<<<<< HEAD
     return await captainModel.find({
-=======
-    const captains = await captainModel.find({
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
       location: {
         $geoWithin: {
           $centerSphere: [[lng, ltd], radius / 6371],
@@ -646,18 +396,12 @@ module.exports.getCaptainsInTheRadius = async (ltd, lng, radius, vehicleType) =>
       status: "active",
       availabilityStatus: "online_available",
       isOnline: true,
-<<<<<<< HEAD
       socketId: { $ne: null },
     });
-=======
-    });
-    return captains;
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   } catch (error) {
     throw new Error("Error in getting captain in radius: " + error.message);
   }
 };
-<<<<<<< HEAD
 
 module.exports.reverseGeocode = async (ltd, lng) => {
   const lat = Number(ltd);
@@ -679,5 +423,3 @@ module.exports.reverseGeocode = async (ltd, lng) => {
   }
   return { address: `Current location (${lat.toFixed(5)}, ${lon.toFixed(5)}), Nigeria`, ltd: lat, lng: lon, source: "coordinates" };
 };
-=======
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
