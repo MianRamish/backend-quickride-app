@@ -19,25 +19,18 @@ router.get('/get-distance-time',
 
 router.get('/get-suggestions',
     query('input').isString().isLength({ min: 3 }),
-<<<<<<< HEAD
     query('lat').optional().isFloat({ min: -90, max: 90 }),
     query('lng').optional().isFloat({ min: -180, max: 180 }),
     authMiddleware.authAny,
-=======
-    authMiddleware.authUser,
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     mapController.getAutoCompleteSuggestions
 )
 
 
-<<<<<<< HEAD
 router.get('/reverse-geocode',
     query('lat').isFloat({ min: -90, max: 90 }),
     query('lng').isFloat({ min: -180, max: 180 }),
     authMiddleware.authAny,
     mapController.reverseGeocode
 );
-=======
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 
 module.exports = router;
