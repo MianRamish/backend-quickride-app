@@ -14,7 +14,6 @@ const rideSchema = new mongoose.Schema(
     requestedCaptains: [{ type: mongoose.Schema.Types.ObjectId, ref: "Captain" }],
     rejectedCaptains: [{ type: mongoose.Schema.Types.ObjectId, ref: "Captain" }],
     requestExpiresAt: { type: Date, default: null },
-<<<<<<< HEAD
     currentRequestCaptain: { type: mongoose.Schema.Types.ObjectId, ref: "Captain", default: null },
     currentRequestExpiresAt: { type: Date, default: null },
     requestAttempt: { type: Number, default: 0 },
@@ -29,9 +28,6 @@ const rideSchema = new mongoose.Schema(
     paymentReference: { type: String, default: "" },
     cashCollected: { type: Boolean, default: false },
     cashCollectedAt: { type: Date, default: null },
-=======
-    paymentMethod: { type: String, enum: ["cash", "card", "wallet"], default: "cash" },
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 
     rideMode: { type: String, enum: ["now", "scheduled"], default: "now" },
     scheduledFor: { type: Date, default: null, index: true },
@@ -51,13 +47,8 @@ const rideSchema = new mongoose.Schema(
     },
     currency: {
       type: String,
-<<<<<<< HEAD
       enum: ["NGN", "USD", "CAD"],
       default: "NGN",
-=======
-      enum: ["USD", "CAD"],
-      default: "USD",
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     },
     vehicle: {
       type: String,
@@ -65,19 +56,12 @@ const rideSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-<<<<<<< HEAD
       enum: ["pending", "scheduled", "accepted", "arriving", "arrived", "ongoing", "completed", "cancelled"],
       default: "pending",
     },
 cancelledBy: { type: String, enum: ["user","captain","system","admin"], default: null },
 cancellationFee: { type: Number, default: 0 },
 cancellationFeeReason: { type: String, default: "" },
-=======
-      enum: ["pending", "scheduled", "accepted", "ongoing", "completed", "cancelled"],
-      default: "pending",
-    },
-cancelledBy: { type: String, enum: ["user","captain","system"], default: null },
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 cancelReason: {
   code: { type: String, default: "" },
   text: { type: String, default: "" }
@@ -85,7 +69,6 @@ cancelReason: {
 
 rating: { type: Number, min: 1, max: 5, default: null },
 review: { type: String, default: "" },
-<<<<<<< HEAD
 ratingTags: [{ type: String, trim: true, maxlength: 80 }],
 passengerRating: { type: Number, min: 1, max: 5, default: null },
 passengerReview: { type: String, default: "" },
@@ -107,8 +90,6 @@ promoUsageReleased: { type: Boolean, default: false },
 originalFare: { type: Number, default: 0 },
 shareToken: { type: String, default: "", index: true },
 chatClosedAt: { type: Date, default: null },
-=======
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 
 earnings: {
   gross: { type: Number, default: 0 },
