@@ -1,8 +1,5 @@
 const captainModel = require("../models/captain.model");
-<<<<<<< HEAD
 const { normalizeNigeriaPhone } = require("../utils/nigeria");
-=======
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 
 module.exports.createCaptain = async (
   firstname,
@@ -28,11 +25,7 @@ module.exports.createCaptain = async (
     },
     email,
     password: hashedPassword,
-<<<<<<< HEAD
     phone: normalizeNigeriaPhone(phone),
-=======
-    phone,
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     vehicle: {
       color,
       number,
@@ -41,11 +34,7 @@ module.exports.createCaptain = async (
     },
     location: {
       type: "Point",
-<<<<<<< HEAD
       coordinates: [3.3792, 6.5244],
-=======
-      coordinates: [-79.3832, 43.6532],
->>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     },
   });
 
