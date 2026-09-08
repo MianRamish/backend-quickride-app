@@ -4,7 +4,10 @@ const captainService = require("../services/captain.service");
 const { validationResult } = require("express-validator");
 const blacklistTokenModel = require("../models/blacklistToken.model");
 const jwt = require("jsonwebtoken");
+<<<<<<< HEAD
 const { normalizeNigeriaPhone } = require("../utils/nigeria");
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 
 module.exports.registerCaptain = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
@@ -45,6 +48,10 @@ module.exports.registerCaptain = asyncHandler(async (req, res) => {
     vehicle.type
   );
 
+<<<<<<< HEAD
+=======
+  captain.emailVerified = process.env.DISABLE_EMAIL_VERIFICATION === "true";
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   captain.profilePhotoUrl = profilePhotoUrl || "";
   captain.vehiclePhotoUrl = vehiclePhotoUrl || "";
 
@@ -59,6 +66,7 @@ module.exports.registerCaptain = asyncHandler(async (req, res) => {
         ? "pending"
         : "not_started",
   };
+<<<<<<< HEAD
   const reviewStatus = (present) => ({ status: present ? "pending" : "missing", note: "", reviewedAt: null });
   captain.documents.reviews = {
     license: reviewStatus(Boolean(documents.licenseUrl)),
@@ -68,6 +76,8 @@ module.exports.registerCaptain = asyncHandler(async (req, res) => {
     profilePhoto: reviewStatus(Boolean(profilePhotoUrl)),
     vehiclePhoto: reviewStatus(Boolean(vehiclePhotoUrl)),
   };
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 
   captain.verificationStatus = "pending";
   captain.isApproved = false;
@@ -102,6 +112,7 @@ module.exports.registerCaptain = asyncHandler(async (req, res) => {
 
   const token = captain.generateAuthToken();
 
+<<<<<<< HEAD
   try {
     await require("../services/notification.service").notify({
       recipientType: "admin",
@@ -112,6 +123,8 @@ module.exports.registerCaptain = asyncHandler(async (req, res) => {
     });
   } catch (_) {}
 
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   res.status(201).json({
     message:
       "Captain registered successfully. Your account is pending admin verification.",
@@ -120,6 +133,43 @@ module.exports.registerCaptain = asyncHandler(async (req, res) => {
   });
 });
 
+<<<<<<< HEAD
+=======
+module.exports.verifyEmail = asyncHandler(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json(errors.array());
+  }
+
+  const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ message: "Invalid verification link", error: "Token is required" });
+    }
+  
+    let decodedTokenData = jwt.verify(token, process.env.JWT_SECRET);
+    if (!decodedTokenData || decodedTokenData.purpose !== "email-verification") {
+      return res.status(400).json({ message: "You're trying to use an invalid or expired verification link", error: "Invalid token" });
+    }
+  
+    let captain = await captainModel.findOne({ _id: decodedTokenData.id });
+  
+    if (!captain) {
+      return res.status(404).json({ message: "User not found. Please ask for another verification link." });
+    }
+  
+    if (captain.emailVerified) {
+      return res.status(400).json({ message: "Email already verified" });
+    }
+  
+    captain.emailVerified = true;
+    await captain.save();
+  
+    res.status(200).json({
+      message: "Email verified successfully",
+    });
+});
+
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 module.exports.loginCaptain = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -138,9 +188,12 @@ module.exports.loginCaptain = asyncHandler(async (req, res) => {
   if (!isMatch) {
     return res.status(404).json({ message: "Invalid email or password" });
   }
+<<<<<<< HEAD
   if (captain.status === "suspended" || captain.verificationStatus === "suspended") {
     return res.status(403).json({ message: "Your driver account has been suspended. Contact QuickRide support." });
   }
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 
   const token = captain.generateAuthToken();
   res.cookie("token", token);
@@ -148,8 +201,12 @@ module.exports.loginCaptain = asyncHandler(async (req, res) => {
 });
 
 module.exports.captainProfile = asyncHandler(async (req, res) => {
+<<<<<<< HEAD
   const captain = await captainModel.findById(req.captain._id).populate("rides").populate("activeVehicle");
   res.status(200).json({ captain });
+=======
+  res.status(200).json({ captain: req.captain });
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 });
 
 module.exports.updateCaptainProfile = asyncHandler(async (req, res) => {
@@ -160,7 +217,10 @@ module.exports.updateCaptainProfile = asyncHandler(async (req, res) => {
   }
 
   const { captainData } = req.body;
+<<<<<<< HEAD
   if (captainData?.phone) captainData.phone = normalizeNigeriaPhone(captainData.phone);
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   const updatedCaptainData = await captainModel.findOneAndUpdate(
     { email: req.captain.email },
     captainData,
@@ -214,6 +274,7 @@ module.exports.resetPassword = asyncHandler(async (req, res) => {
 module.exports.earningsSummary = async (req, res) => {
   const rideModel = require("../models/ride.model");
   const payoutModel = require("../models/payout.model");
+<<<<<<< HEAD
   const Settlement = require("../models/settlement.model");
   const captain = await captainModel.findById(req.captain._id);
   const rides = await rideModel.find({ captain: req.captain._id, status: "completed" }).sort({ completedAt: -1, createdAt: -1 }).limit(200);
@@ -240,6 +301,23 @@ module.exports.earningsSummary = async (req, res) => {
     week: { grossCash: sumFrom(weekStart), commission: sumFrom(weekStart, "commissionAmount"), trips: rides.filter((r) => new Date(r.completedAt || r.updatedAt) >= weekStart).length },
     month: { grossCash: sumFrom(monthStart), commission: sumFrom(monthStart, "commissionAmount"), trips: rides.filter((r) => new Date(r.completedAt || r.updatedAt) >= monthStart).length },
     recentTrips: rides.slice(0, 30), payouts, settlements,
+=======
+  const rides = await rideModel.find({ captain: req.captain._id, status: "completed" }).sort({ createdAt: -1 }).limit(50);
+  const payouts = await payoutModel.find({ captain: req.captain._id }).sort({ createdAt: -1 }).limit(20);
+
+  const totalNet = rides.reduce((s, r) => s + (r.earnings?.netToCaptain || 0), 0);
+  const totalBonus = rides.reduce((s, r) => s + (r.earnings?.bonusAmount || 0), 0);
+  const totalCommission = rides.reduce((s, r) => s + (r.earnings?.commissionAmount || 0), 0);
+
+  return res.json({
+    currency: "USD",
+    balance: req.captain.earnings?.balance || 0,
+    totalNet: Math.round(totalNet * 100) / 100,
+    totalBonus: Math.round(totalBonus * 100) / 100,
+    totalCommission: Math.round(totalCommission * 100) / 100,
+    recentTrips: rides,
+    payouts,
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   });
 };
 
@@ -256,9 +334,12 @@ module.exports.incentives = async (req, res) => {
     const end = new Date(now);
     if (camp.period === "daily") {
       start.setHours(0,0,0,0); end.setHours(23,59,59,999);
+<<<<<<< HEAD
     } else if (camp.period === "monthly") {
       start.setDate(1); start.setHours(0,0,0,0);
       end.setMonth(end.getMonth() + 1, 0); end.setHours(23,59,59,999);
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     } else {
       const day = start.getDay();
       const diff = (day === 0 ? 6 : day - 1);
@@ -291,7 +372,11 @@ module.exports.performance = async (req, res) => {
   const accepted = c.stats?.acceptedRides || 0;
   const cancelled = c.stats?.cancelledRides || 0;
   const completed = c.stats?.completedRides || 0;
+<<<<<<< HEAD
   const kilometres = c.stats?.kmTravelled || 0;
+=======
+  const miles = c.stats?.kmTravelled || 0;
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   const ratingAvg = c.rating?.avg || 0;
   const ratingCount = c.rating?.count || 0;
 
@@ -300,9 +385,13 @@ module.exports.performance = async (req, res) => {
     accepted,
     cancelled,
     completed,
+<<<<<<< HEAD
     kilometres,
     kmTravelled: kilometres,
     miles: kilometres, // legacy response key retained for older frontend builds
+=======
+    miles,
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     ratingAvg,
     ratingCount,
     docs: c.documents || {},
@@ -324,6 +413,7 @@ module.exports.updateDocuments = asyncHandler(async (req, res) => {
   };
   if (profilePhotoUrl !== undefined) captain.profilePhotoUrl = profilePhotoUrl;
   if (vehiclePhotoUrl !== undefined) captain.vehiclePhotoUrl = vehiclePhotoUrl;
+<<<<<<< HEAD
   const reviews = captain.documents.reviews || {};
   const markPending = (key) => { reviews[key] = { ...(reviews[key]?.toObject ? reviews[key].toObject() : reviews[key] || {}), status: "pending", note: "", reviewedAt: null }; };
   if (documents.licenseUrl !== undefined) markPending("license");
@@ -333,6 +423,8 @@ module.exports.updateDocuments = asyncHandler(async (req, res) => {
   if (profilePhotoUrl !== undefined) markPending("profilePhoto");
   if (vehiclePhotoUrl !== undefined) markPending("vehiclePhoto");
   captain.documents.reviews = reviews;
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   captain.verificationStatus = "pending";
   captain.verificationNote = "Updated documents submitted for admin review";
   captain.isApproved = false;
@@ -359,6 +451,7 @@ module.exports.updateDocuments = asyncHandler(async (req, res) => {
     // keep document update successful even if linked vehicle is missing
   }
 
+<<<<<<< HEAD
   try {
     await require("../services/notification.service").notify({
       recipientType: "admin",
@@ -369,11 +462,14 @@ module.exports.updateDocuments = asyncHandler(async (req, res) => {
     });
   } catch (_) {}
 
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   res.json({ message: "Documents submitted for review", captain });
 });
 
 module.exports.setAvailability = asyncHandler(async (req, res) => {
   const { online } = req.body;
+<<<<<<< HEAD
   if (typeof online !== "boolean") {
     return res.status(400).json({ message: "online must be true or false." });
   }
@@ -381,12 +477,17 @@ module.exports.setAvailability = asyncHandler(async (req, res) => {
   const captain = await captainModel.findById(req.captain._id);
   if (!captain) return res.status(404).json({ message: "Captain not found" });
 
+=======
+  const captain = await captainModel.findById(req.captain._id);
+  if (!captain) return res.status(404).json({ message: "Captain not found" });
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   if (!captain.isApproved || captain.verificationStatus !== "approved" || captain.status !== "active") {
     captain.isOnline = false;
     captain.availabilityStatus = captain.status === "suspended" ? "suspended" : "offline";
     await captain.save();
     return res.status(403).json({ message: "Your account must be approved by admin before going online." });
   }
+<<<<<<< HEAD
 
   if (!online && captain.availabilityStatus === "on_trip") {
     return res.status(409).json({ message: "Complete your active trip before going offline." });
@@ -403,6 +504,12 @@ module.exports.setAvailability = asyncHandler(async (req, res) => {
   }
 
   res.json({ message, captain, liveConnected });
+=======
+  captain.isOnline = Boolean(online);
+  captain.availabilityStatus = online ? "online_available" : "offline";
+  await captain.save();
+  res.json({ message: online ? "You are online" : "You are offline", captain });
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 });
 
 module.exports.incomingRides = asyncHandler(async (req, res) => {
@@ -411,9 +518,18 @@ module.exports.incomingRides = asyncHandler(async (req, res) => {
   const rides = await rideModel.find({
     status: "pending",
     vehicle: req.captain.vehicle?.type,
+<<<<<<< HEAD
     currentRequestCaptain: req.captain._id,
     currentRequestExpiresAt: { $gte: now },
   }).populate("user", "fullname email phone rating").sort({ currentRequestExpiresAt: 1 }).limit(3);
+=======
+    rejectedCaptains: { $ne: req.captain._id },
+    $and: [
+      { $or: [{ requestedCaptains: req.captain._id }, { requestedCaptains: { $size: 0 } }] },
+      { $or: [{ requestExpiresAt: null }, { requestExpiresAt: { $gte: now } }] },
+    ],
+  }).populate("user", "fullname email phone").sort({ createdAt: -1 }).limit(20);
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   res.json(rides);
 });
 
@@ -421,7 +537,11 @@ module.exports.currentRide = asyncHandler(async (req, res) => {
   const rideModel = require("../models/ride.model");
   const ride = await rideModel.findOne({
     captain: req.captain._id,
+<<<<<<< HEAD
     status: { $in: ["accepted", "arriving", "arrived", "ongoing"] },
+=======
+    status: { $in: ["accepted", "ongoing"] },
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   }).populate("user", "fullname email phone").sort({ updatedAt: -1 });
   res.json(ride || null);
 });
@@ -434,7 +554,11 @@ module.exports.listWithdrawals = asyncHandler(async (req, res) => {
 });
 
 module.exports.requestWithdrawal = asyncHandler(async (req, res) => {
+<<<<<<< HEAD
   const { amount, method = "bank", bankName = "", accountHolder = "", accountNumber = "", routingNumber = "", bankCode = "", payoutEmail = "", currency = "NGN" } = req.body;
+=======
+  const { amount, method = "bank", bankName = "", accountHolder = "", accountNumber = "", routingNumber = "", payoutEmail = "", currency = "USD" } = req.body;
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   const numericAmount = Number(amount);
   if (!numericAmount || numericAmount <= 0) return res.status(400).json({ message: "Enter a valid withdrawal amount." });
   const captain = await captainModel.findById(req.captain._id);
@@ -450,12 +574,17 @@ module.exports.requestWithdrawal = asyncHandler(async (req, res) => {
     bankName,
     accountHolder,
     accountNumber,
+<<<<<<< HEAD
     routingNumber: routingNumber || bankCode,
     bankCode: bankCode || routingNumber,
+=======
+    routingNumber,
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     payoutEmail,
   });
   res.status(201).json(withdrawal);
 });
+<<<<<<< HEAD
 
 module.exports.updateLocation = asyncHandler(async (req, res) => {
   const { ltd, lng, accuracy = null, heading = null, source = "gps", label = "" } = req.body;
@@ -541,3 +670,5 @@ module.exports.removePushSubscription = asyncHandler(async (req, res) => {
   await push.removeSubscription({ recipientType: "captain", recipient: req.captain._id, endpoint: req.body.endpoint });
   res.json({ ok: true });
 });
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc

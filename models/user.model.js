@@ -29,12 +29,18 @@ const userSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
+<<<<<<< HEAD
       trim: true,
       maxlength: 20,
+=======
+      minlength: 10,
+      maxlength: 10,
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     },
     socketId: {
       type: String,
     },
+<<<<<<< HEAD
     status: { type: String, enum: ["active", "suspended"], default: "active" },
     savedPlaces: [{
       label: { type: String, trim: true },
@@ -53,6 +59,12 @@ const userSchema = new mongoose.Schema(
     },
     referralCode: { type: String, unique: true, sparse: true, uppercase: true, trim: true },
     referredBy: { type: String, default: "", uppercase: true, trim: true },
+=======
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     rides: [
       {
         type: mongoose.Schema.Types.ObjectId,

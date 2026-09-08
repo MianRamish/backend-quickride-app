@@ -20,7 +20,11 @@ const dbStream = {
         status: parseInt(status),
         responseTime: parseFloat(responseTime),
         contentLength,
+<<<<<<< HEAD
         formattedTimestamp: moment().tz("Africa/Lagos").format("MMM DD hh:mm:ss A"),
+=======
+        formattedTimestamp: moment().tz("Asia/Kolkata").format("MMM DD hh:mm:ss A"),
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
       };
       try {
         await BackendLog.create(log);

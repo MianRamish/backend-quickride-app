@@ -42,12 +42,18 @@ module.exports.getAutoCompleteSuggestions = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
+<<<<<<< HEAD
     const { input, lat, lng } = req.query;
     const userLocation = Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))
       ? { ltd: Number(lat), lng: Number(lng) }
       : null;
 
     const suggestions = await mapService.getAutoCompleteSuggestions(input, userLocation);
+=======
+    const { input } = req.query;
+
+    const suggestions = await mapService.getAutoCompleteSuggestions(input);
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 
     res.status(200).json(suggestions);
   } catch (err) {
@@ -55,6 +61,7 @@ module.exports.getAutoCompleteSuggestions = async (req, res) => {
     res.status(500).json({ message: err.message || "Map service error" });
   }
 };
+<<<<<<< HEAD
 
 module.exports.reverseGeocode = async (req, res) => {
   try {
@@ -64,3 +71,5 @@ module.exports.reverseGeocode = async (req, res) => {
     res.status(400).json({ message: error.message || "Unable to resolve current location" });
   }
 };
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc

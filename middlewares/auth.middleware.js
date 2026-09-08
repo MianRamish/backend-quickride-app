@@ -29,9 +29,12 @@ module.exports.authUser = async (req, res, next) => {
     if (!user) {
       return res.status(401).json({ message: "Unauthorized User" });
     }
+<<<<<<< HEAD
     if (user.status === "suspended") {
       return res.status(403).json({ message: "Your passenger account has been suspended. Contact support." });
     }
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 
     req.user = {
       _id: user._id,
@@ -43,6 +46,10 @@ module.exports.authUser = async (req, res, next) => {
       phone: user.phone,
       rides: user.rides,
       socketId: user.socketId,
+<<<<<<< HEAD
+=======
+      emailVerified: user.emailVerified || false,
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     };
     req.userType = "user";
 
@@ -76,9 +83,12 @@ module.exports.authCaptain = async (req, res, next) => {
     if (!captain) {
       return res.status(401).json({ message: "Unauthorized User" });
     }
+<<<<<<< HEAD
     if (captain.status === "suspended" || captain.verificationStatus === "suspended") {
       return res.status(403).json({ message: "Your driver account has been suspended. Contact QuickRide support." });
     }
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     req.captain = {
       _id: captain._id,
       fullname: {
@@ -89,6 +99,10 @@ module.exports.authCaptain = async (req, res, next) => {
       phone: captain.phone,
       rides: captain.rides,
       socketId: captain.socketId,
+<<<<<<< HEAD
+=======
+      emailVerified: captain.emailVerified,
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
       vehicle: captain.vehicle,
       status: captain.status,
       isApproved: captain.isApproved,
@@ -136,6 +150,7 @@ module.exports.authAdmin = async (req, res, next) => {
     return res.status(401).json({ message: "Unauthorized" });
   }
 };
+<<<<<<< HEAD
 
 module.exports.authAny = async (req, res, next) => {
   const token = getToken(req);
@@ -169,3 +184,5 @@ module.exports.authAny = async (req, res, next) => {
     return res.status(401).json({ message: "Unauthorized" });
   }
 };
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc

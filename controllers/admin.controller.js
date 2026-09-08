@@ -6,8 +6,11 @@ const rideModel = require("../models/ride.model");
 const incentiveCampaignModel = require("../models/incentiveCampaign.model");
 const payoutModel = require("../models/payout.model");
 const userModel = require("../models/user.model");
+<<<<<<< HEAD
 const { normalizeNigeriaPhone } = require("../utils/nigeria");
 const promoService = require("../services/promo.service");
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 
 async function ensureSeedAdmin() {
   const email = process.env.ADMIN_EMAIL;
@@ -46,6 +49,7 @@ module.exports.listCaptains = async (_req, res) => {
 };
 
 module.exports.approveCaptain = async (req, res) => {
+<<<<<<< HEAD
   const captain = await captainModel.findById(req.params.id);
   if (!captain) return res.status(404).json({ message: "Captain not found" });
   const reviews = captain.documents?.reviews || {};
@@ -54,6 +58,11 @@ module.exports.approveCaptain = async (req, res) => {
   if (missing.length && !req.body?.force) {
     return res.status(400).json({ message: `Review and approve all required driver documents first: ${missing.join(", ")}`, missing });
   }
+=======
+  const { id } = req.params;
+  const captain = await captainModel.findById(id);
+  if (!captain) return res.status(404).json({ message: "Captain not found" });
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   captain.isApproved = true;
   captain.verificationStatus = "approved";
   captain.verificationNote = req.body?.verificationNote || "Approved by admin";
@@ -64,8 +73,11 @@ module.exports.approveCaptain = async (req, res) => {
   captain.documents.vehicleDocsUpToDate = true;
   await captain.save();
   await captain.populate("activeVehicle");
+<<<<<<< HEAD
   const notify = require("../services/notification.service");
   await notify.notify({ recipientType: "captain", recipient: captain._id, type: "verification", title: "Driver account approved", body: "Your documents are approved. You can now go online and receive rides." });
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   return res.json({ ok: true, captain });
 };
 
@@ -105,7 +117,11 @@ module.exports.setCaptainDocStatus = async (req, res) => {
 module.exports.createVehicle = async (req, res) => {
   const { captainId, make, model, year, color, plateNumber, type, registrationUrl, registrationExpiry, insuranceUrl, insuranceExpiry } = req.body;
   if (!captainId || !type) return res.status(400).json({ message: "captainId and type are required" });
+<<<<<<< HEAD
   if (!["car", "bike"].includes(type)) return res.status(400).json({ message: "Supported vehicle types are car and bike." });
+=======
+  if (!["car", "bike"].includes(type)) return res.status(400).json({ message: "Auto/rickshaw vehicle type is not available in Canada/US." });
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   const captain = await captainModel.findById(captainId);
   if (!captain) return res.status(404).json({ message: "Captain not found" });
 
@@ -152,6 +168,7 @@ module.exports.updateVehicleDocs = async (req, res) => {
 };
 
 module.exports.analyticsSummary = async (_req, res) => {
+<<<<<<< HEAD
   const Settlement = require("../models/settlement.model");
   const today = new Date(); today.setHours(0,0,0,0);
   const [totalPassengers, totalCaptains, totalRides, completed, cancelled, activeRides, onlineCaptains, pendingDrivers, openComplaints, openEmergencies] = await Promise.all([
@@ -173,12 +190,31 @@ module.exports.analyticsSummary = async (_req, res) => {
     today: todayAgg?.[0] || { trips: 0, fare: 0, commission: 0 },
     paymentMode: "cash",
   });
+=======
+  const totalPassengers = await require("../models/user.model").countDocuments({});
+  const totalCaptains = await captainModel.countDocuments({});
+  const totalRides = await rideModel.countDocuments({});
+  const completed = await rideModel.countDocuments({ status: "completed" });
+  const cancelled = await rideModel.countDocuments({ status: "cancelled" });
+
+  const revenueAgg = await rideModel.aggregate([
+    { $match: { status: "completed" } },
+    { $group: { _id: null, revenue: { $sum: "$fare" } } }
+  ]);
+  const revenue = revenueAgg?.[0]?.revenue || 0;
+
+  return res.json({ totalPassengers, totalCaptains, totalRides, completed, cancelled, revenue });
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 };
 
 module.exports.onlineCaptains = async (_req, res) => {
   const captains = await captainModel
     .find({ isOnline: true, socketId: { $ne: null } })
+<<<<<<< HEAD
     .select("fullname email location lastLocationAt lastLocationAccuracy lastSeenAt vehicle isApproved isOnline availabilityStatus verificationStatus performanceScore rating stats documents activeVehicle earnings");
+=======
+    .select("fullname email location vehicle isApproved isOnline availabilityStatus verificationStatus performanceScore rating stats documents activeVehicle");
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   return res.json(captains);
 };
 
@@ -266,9 +302,15 @@ module.exports.createUser = async (req, res) => {
   const user = await userModel.create({
     fullname: { firstname, lastname },
     email: String(email).trim().toLowerCase(),
+<<<<<<< HEAD
     phone: phone ? normalizeNigeriaPhone(phone) : "",
     password: passwordHash,
     referralCode: `${String(firstname).replace(/[^a-z0-9]/gi, "").slice(0,5)}${Math.random().toString(36).slice(2,7)}`.toUpperCase(),
+=======
+    phone,
+    password: passwordHash,
+    emailVerified: true,
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   });
   return res.status(201).json({ ...user.toObject(), password: undefined });
 };
@@ -282,9 +324,14 @@ module.exports.updateUser = async (req, res) => {
       lastname: req.body.lastname || "",
     };
   }
+<<<<<<< HEAD
   Object.assign(update, pickDefined(req.body, ["email", "phone", "status"]));
   if (update.email) update.email = String(update.email).trim().toLowerCase();
   if (update.phone) update.phone = normalizeNigeriaPhone(update.phone);
+=======
+  Object.assign(update, pickDefined(req.body, ["email", "phone", "emailVerified"]));
+  if (update.email) update.email = String(update.email).trim().toLowerCase();
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   const user = await userModel.findByIdAndUpdate(id, update, { new: true }).select("-password");
   if (!user) return res.status(404).json({ message: "Passenger not found" });
   return res.json(user);
@@ -309,8 +356,13 @@ module.exports.createCaptain = async (req, res) => {
     vehicleColor = "Black",
     vehicleNumber = "TBD",
     vehicleCapacity = 4,
+<<<<<<< HEAD
     longitude = 3.3792,
     latitude = 6.5244,
+=======
+    longitude = -79.3832,
+    latitude = 43.6532,
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   } = req.body;
   if (!firstname || !email) return res.status(400).json({ message: "firstname and email are required" });
   const exists = await captainModel.findOne({ email: String(email).trim().toLowerCase() });
@@ -319,12 +371,20 @@ module.exports.createCaptain = async (req, res) => {
   const captain = await captainModel.create({
     fullname: { firstname, lastname },
     email: String(email).trim().toLowerCase(),
+<<<<<<< HEAD
     phone: phone ? normalizeNigeriaPhone(phone) : "",
+=======
+    phone,
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     password: passwordHash,
     isApproved: !!isApproved,
     verificationStatus: isApproved ? "approved" : "pending",
     availabilityStatus: "offline",
     status,
+<<<<<<< HEAD
+=======
+    emailVerified: true,
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     vehicle: {
       color: vehicleColor,
       number: vehicleNumber,
@@ -344,7 +404,11 @@ module.exports.updateCaptain = async (req, res) => {
   if (req.body.firstname !== undefined) captain.fullname.firstname = req.body.firstname;
   if (req.body.lastname !== undefined) captain.fullname.lastname = req.body.lastname;
   if (req.body.email !== undefined) captain.email = String(req.body.email).trim().toLowerCase();
+<<<<<<< HEAD
   if (req.body.phone !== undefined) captain.phone = normalizeNigeriaPhone(req.body.phone);
+=======
+  if (req.body.phone !== undefined) captain.phone = req.body.phone;
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   if (req.body.isApproved !== undefined) {
     captain.isApproved = !!req.body.isApproved;
     captain.verificationStatus = captain.isApproved ? "approved" : "pending";
@@ -354,6 +418,7 @@ module.exports.updateCaptain = async (req, res) => {
     captain.isApproved = req.body.verificationStatus === "approved";
   }
   if (req.body.isOnline !== undefined) captain.isOnline = !!req.body.isOnline;
+<<<<<<< HEAD
   if (req.body.status !== undefined) {
     captain.status = req.body.status;
     if (captain.status !== "active") {
@@ -368,6 +433,12 @@ module.exports.updateCaptain = async (req, res) => {
   if (req.body.performanceScore !== undefined) captain.performanceScore = Number(req.body.performanceScore) || 0;
   if (req.body.vehicleType !== undefined) {
     if (!["car", "bike"].includes(req.body.vehicleType)) return res.status(400).json({ message: "Supported vehicle types are car and bike." });
+=======
+  if (req.body.status !== undefined) captain.status = req.body.status;
+  if (req.body.performanceScore !== undefined) captain.performanceScore = Number(req.body.performanceScore) || 0;
+  if (req.body.vehicleType !== undefined) {
+    if (!["car", "bike"].includes(req.body.vehicleType)) return res.status(400).json({ message: "Auto/rickshaw vehicle type is not available in Canada/US." });
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     captain.vehicle.type = req.body.vehicleType;
   }
   if (req.body.vehicleColor !== undefined) captain.vehicle.color = req.body.vehicleColor;
@@ -377,6 +448,7 @@ module.exports.updateCaptain = async (req, res) => {
     captain.location = { type: "Point", coordinates: [Number(req.body.longitude), Number(req.body.latitude)] };
   }
   await captain.save();
+<<<<<<< HEAD
   if (req.body.status !== undefined) {
     try {
       await require("../services/notification.service").notify({
@@ -386,6 +458,8 @@ module.exports.updateCaptain = async (req, res) => {
       });
     } catch (_) {}
   }
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   await captain.populate("activeVehicle");
   return res.json(captain);
 };
@@ -404,7 +478,11 @@ module.exports.updateVehicle = async (req, res) => {
   ["make", "model", "year", "color", "plateNumber", "type", "isActive"].forEach((key) => {
     if (req.body[key] !== undefined) vehicle[key] = req.body[key];
   });
+<<<<<<< HEAD
   if (req.body.type !== undefined && !["car", "bike"].includes(req.body.type)) return res.status(400).json({ message: "Supported vehicle types are car and bike." });
+=======
+  if (req.body.type !== undefined && !["car", "bike"].includes(req.body.type)) return res.status(400).json({ message: "Auto/rickshaw vehicle type is not available in Canada/US." });
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   if (req.body.registrationUrl !== undefined) vehicle.docs.registrationUrl = req.body.registrationUrl;
   if (req.body.registrationExpiry !== undefined) vehicle.docs.registrationExpiry = req.body.registrationExpiry ? new Date(req.body.registrationExpiry) : null;
   if (req.body.insuranceUrl !== undefined) vehicle.docs.insuranceUrl = req.body.insuranceUrl;
@@ -433,6 +511,7 @@ module.exports.listRides = async (req, res) => {
 module.exports.updateRide = async (req, res) => {
   const ride = await rideModel.findById(req.params.id);
   if (!ride) return res.status(404).json({ message: "Ride not found" });
+<<<<<<< HEAD
   if (req.body.status !== undefined && req.body.status !== ride.status) {
     const previousStatus = ride.status;
     ride.status = req.body.status;
@@ -445,6 +524,9 @@ module.exports.updateRide = async (req, res) => {
       if (ride.rideMode === "scheduled") ride.scheduledStatus = "cancelled";
     }
   }
+=======
+  if (req.body.status !== undefined) ride.status = req.body.status;
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   if (req.body.paymentID !== undefined) ride.paymentID = req.body.paymentID;
   if (req.body.fare !== undefined) ride.fare = Number(req.body.fare) || ride.fare;
   if (req.body.currency !== undefined) ride.currency = req.body.currency;
@@ -452,17 +534,25 @@ module.exports.updateRide = async (req, res) => {
   if (req.body.rating !== undefined) ride.rating = req.body.rating;
   if (req.body.cancelReasonText !== undefined) ride.cancelReason.text = req.body.cancelReasonText;
   await ride.save();
+<<<<<<< HEAD
   if (ride.status === "cancelled") await promoService.releasePromoUsage(ride._id);
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   await ride.populate("user");
   await ride.populate("captain");
   return res.json(ride);
 };
 
 module.exports.deleteRide = async (req, res) => {
+<<<<<<< HEAD
   const ride = await rideModel.findById(req.params.id);
   if (!ride) return res.status(404).json({ message: "Ride not found" });
   if (ride.status !== "completed") await promoService.releasePromoUsage(ride._id);
   await ride.deleteOne();
+=======
+  const ride = await rideModel.findByIdAndDelete(req.params.id);
+  if (!ride) return res.status(404).json({ message: "Ride not found" });
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   return res.json({ ok: true });
 };
 
@@ -565,6 +655,7 @@ module.exports.updateWithdrawal = async (req, res) => {
 };
 
 module.exports.listScheduledRides = async (_req, res) => {
+<<<<<<< HEAD
   const rides = await rideModel.find({ rideMode: "scheduled", status: { $nin: ["completed", "cancelled"] } }).populate("user", "fullname email phone").populate("captain", "fullname email phone vehicle").sort({ scheduledFor: 1 }).limit(500);
   return res.json(rides);
 };
@@ -664,3 +755,8 @@ module.exports.liveOperations = async (_req, res) => {
     staleSeconds: config.driverLocationStaleSeconds,
   });
 };
+=======
+  const rides = await rideModel.find({ status: "scheduled" }).populate("user", "fullname email phone").populate("captain", "fullname email phone vehicle").sort({ scheduledFor: 1 }).limit(500);
+  return res.json(rides);
+};
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc

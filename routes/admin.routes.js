@@ -60,6 +60,7 @@ router.patch("/reviews/hide", auth.authAdmin, adminController.hideReview);
 router.get("/payouts", auth.authAdmin, adminController.listPayouts);
 router.post("/payouts", auth.authAdmin, adminController.createPayout);
 
+<<<<<<< HEAD
 router.patch("/captains/:id/documents/:docKey/review", auth.authAdmin, adminController.reviewCaptainDocument);
 router.get("/pricing", auth.authAdmin, adminController.getPricing);
 router.patch("/pricing", auth.authAdmin, adminController.updatePricing);
@@ -70,4 +71,6 @@ router.post("/promo-codes", auth.authAdmin, adminController.createPromoCode);
 router.patch("/promo-codes/:id", auth.authAdmin, adminController.updatePromoCode);
 router.get("/live-operations", auth.authAdmin, adminController.liveOperations);
 
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 module.exports = router;

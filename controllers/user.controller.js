@@ -4,7 +4,11 @@ const userService = require("../services/user.service");
 const { validationResult } = require("express-validator");
 const blacklistTokenModel = require("../models/blacklistToken.model");
 const jwt = require("jsonwebtoken");
+<<<<<<< HEAD
 const { normalizeNigeriaPhone } = require("../utils/nigeria");
+=======
+const autoVerifyEmail = process.env.DISABLE_EMAIL_VERIFICATION === "true";
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 
 module.exports.registerUser = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
@@ -13,7 +17,11 @@ module.exports.registerUser = asyncHandler(async (req, res) => {
     return res.status(400).json(errors.array());
   }
 
+<<<<<<< HEAD
   const { fullname, email, password, phone, referralCode = "" } = req.body;
+=======
+  const { fullname, email, password, phone } = req.body;
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 
   const normalizedEmail = String(email).toLowerCase().trim();
 
@@ -31,6 +39,7 @@ module.exports.registerUser = asyncHandler(async (req, res) => {
     phone
   );
 
+<<<<<<< HEAD
 
   if (referralCode) {
     const referrer = await userModel.findOne({ referralCode: String(referralCode).trim().toUpperCase() });
@@ -38,6 +47,11 @@ module.exports.registerUser = asyncHandler(async (req, res) => {
       user.referredBy = referrer.referralCode;
       await user.save();
     }
+=======
+  if (process.env.DISABLE_EMAIL_VERIFICATION === "true") {
+    user.emailVerified = true;
+    await user.save();
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
   }
 
   const token = user.generateAuthToken();
@@ -49,6 +63,43 @@ module.exports.registerUser = asyncHandler(async (req, res) => {
   });
 });
 
+<<<<<<< HEAD
+=======
+module.exports.verifyEmail = asyncHandler(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json(errors.array());
+  }
+
+  const { token } = req.body;
+  if (!token) {
+    return res.status(400).json({ message: "Invalid verification link", error: "Token is required" });
+  }
+
+  let decodedTokenData = jwt.verify(token, process.env.JWT_SECRET);
+  if (!decodedTokenData || decodedTokenData.purpose !== "email-verification") {
+    return res.status(400).json({ message: "You're trying to use an invalid or expired verification link", error: "Invalid token" });
+  }
+
+  let user = await userModel.findOne({ _id: decodedTokenData.id });
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found. Please ask for another verification link." });
+  }
+
+  if (user.emailVerified) {
+    return res.status(400).json({ message: "Email already verified" });
+  }
+
+  user.emailVerified = true;
+  await user.save();
+
+  res.status(200).json({
+    message: "Email verified successfully",
+  });
+});
+
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 module.exports.loginUser = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -67,9 +118,12 @@ module.exports.loginUser = asyncHandler(async (req, res) => {
   if (!isMatch) {
     return res.status(404).json({ message: "Invalid email or password" });
   }
+<<<<<<< HEAD
   if (user.status === "suspended") {
     return res.status(403).json({ message: "Your passenger account has been suspended. Contact QuickRide support." });
   }
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 
   const token = user.generateAuthToken();
   res.cookie("token", token);
@@ -87,13 +141,21 @@ module.exports.loginUser = asyncHandler(async (req, res) => {
       phone: user.phone,
       rides: user.rides,
       socketId: user.socketId,
+<<<<<<< HEAD
+=======
+      emailVerified: user.emailVerified,
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     },
   });
 });
 
 module.exports.userProfile = asyncHandler(async (req, res) => {
+<<<<<<< HEAD
   const user = await userModel.findById(req.user._id).populate("rides");
   res.status(200).json({ user });
+=======
+  res.status(200).json({ user: req.user });
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
 });
 
 module.exports.updateUserProfile = asyncHandler(async (req, res) => {
@@ -108,7 +170,11 @@ module.exports.updateUserProfile = asyncHandler(async (req, res) => {
     { _id: req.user._id },
     {
       fullname: fullname,
+<<<<<<< HEAD
       phone: normalizeNigeriaPhone(phone),
+=======
+      phone,
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
     },
     { new: true }
   );
@@ -167,6 +233,7 @@ module.exports.resetPassword = asyncHandler(async (req, res) => {
       "Your password has been successfully reset. You can now log in with your new credentials",
   });
 });
+<<<<<<< HEAD
 
 module.exports.savedPlaces = asyncHandler(async (req, res) => {
   const user = await userModel.findById(req.user._id).select("savedPlaces");
@@ -243,3 +310,5 @@ module.exports.removePushSubscription = asyncHandler(async (req, res) => {
   await push.removeSubscription({ recipientType: "user", recipient: req.user._id, endpoint: req.body.endpoint });
   res.json({ ok: true });
 });
+=======
+>>>>>>> addc804220915c5314abc19e357f9f2912d7afbc
