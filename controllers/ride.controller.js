@@ -72,9 +72,9 @@ module.exports.chatDetails = async (req, res) => {
 
 module.exports.createRide = async (req, res) => {
   if (errorsOrNull(req, res)) return;
-  const { pickup, destination, vehicleType, rideMode = "now", scheduledFor = null, paymentMethod = "cash", promoCode = "" } = req.body;
+  const { pickup, destination, vehicleType, rideMode = "now", scheduledFor = null, paymentMethod = "cash", promoCode = "", pickupCoordinates = null, destinationCoordinates = null } = req.body;
   try {
-    const ride = await rideService.createRide({ user: req.user._id, pickup, destination, vehicleType, rideMode, scheduledFor, paymentMethod, promoCode });
+    const ride = await rideService.createRide({ user: req.user._id, pickup, destination, vehicleType, rideMode, scheduledFor, paymentMethod, promoCode, pickupCoordinates, destinationCoordinates });
     await userModel.findByIdAndUpdate(req.user._id, { $addToSet: { rides: ride._id } });
     const populated = await rideModel.findById(ride._id).populate("user", "fullname email phone socketId").select("+otp");
     res.status(201).json(populated);
@@ -93,7 +93,16 @@ module.exports.createRide = async (req, res) => {
 module.exports.getFare = async (req, res) => {
   if (errorsOrNull(req, res)) return;
   try {
-    const result = await rideService.getFare(req.query.pickup, req.query.destination);
+    const pickupCoordinates = Number.isFinite(Number(req.query.pickupLat)) && Number.isFinite(Number(req.query.pickupLng))
+      ? { lat: Number(req.query.pickupLat), lng: Number(req.query.pickupLng) }
+      : null;
+    const destinationCoordinates = Number.isFinite(Number(req.query.destinationLat)) && Number.isFinite(Number(req.query.destinationLng))
+      ? { lat: Number(req.query.destinationLat), lng: Number(req.query.destinationLng) }
+      : null;
+    const result = await rideService.getFare(req.query.pickup, req.query.destination, {
+      originCoordinates: pickupCoordinates,
+      destinationCoordinates,
+    });
     return res.json(result);
   } catch (err) {
     return res.status(500).json({ message: err.message });
