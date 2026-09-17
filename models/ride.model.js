@@ -41,6 +41,14 @@ const rideSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    pickupCoordinates: {
+      type: { type: String, enum: ["Point"], default: "Point" },
+      coordinates: { type: [Number], default: undefined },
+    },
+    destinationCoordinates: {
+      type: { type: String, enum: ["Point"], default: "Point" },
+      coordinates: { type: [Number], default: undefined },
+    },
     fare: {
       type: Number,
       required: true,
