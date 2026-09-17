@@ -9,21 +9,37 @@ const settlementService = require("./settlement.service");
 
 const inferMarket = () => ({ country: "Nigeria", currency: "NGN", symbol: "₦" });
 
-const getFare = async (pickup, destination) => {
+const getFare = async (pickup, destination, options = {}) => {
   if (!pickup || !destination) throw new Error("Pickup and destination are required");
-  const distanceTime = await mapService.getDistanceTime(pickup, destination);
+  const distanceTime = await mapService.getDistanceTime(pickup, destination, options);
   const kilometres = distanceTime.distance.value / 1000;
   const minutes = distanceTime.duration.value / 60;
   const config = await operations.getConfig();
   const pricing = config.fares?.toObject ? config.fares.toObject() : config.fares;
 
   const calculateFare = (vehicleConfig) => {
-    const total = Number(vehicleConfig.base || 0) + kilometres * Number(vehicleConfig.perKm || 0) + minutes * Number(vehicleConfig.perMinute || 0);
-    return Math.round(Math.max(total, Number(vehicleConfig.minimum || 0)));
+    const base = Number(vehicleConfig.base || 0);
+    const distanceCharge = kilometres * Number(vehicleConfig.perKm || 0);
+    const timeCharge = minutes * Number(vehicleConfig.perMinute || 0);
+    const subtotal = base + distanceCharge + timeCharge;
+    const minimum = Number(vehicleConfig.minimum || 0);
+    const total = Math.round(Math.max(subtotal, minimum));
+    return {
+      total,
+      base: Math.round(base),
+      distanceCharge: Math.round(distanceCharge),
+      timeCharge: Math.round(timeCharge),
+      minimum: Math.round(minimum),
+      kilometres: Math.round(kilometres * 10) / 10,
+      minutes: Math.round(minutes),
+    };
   };
 
+  const car = calculateFare(pricing.car);
+  const bike = calculateFare(pricing.bike);
   return {
-    fare: { bike: calculateFare(pricing.bike), car: calculateFare(pricing.car) },
+    fare: { bike: bike.total, car: car.total },
+    fareBreakdown: { car, bike },
     distanceTime,
     market: inferMarket(),
     pricing: {
@@ -69,10 +85,12 @@ module.exports.createRide = async ({
   scheduledFor = null,
   paymentMethod = "cash",
   promoCode = "",
+  pickupCoordinates = null,
+  destinationCoordinates = null,
 }) => {
   if (!user || !pickup || !destination || !vehicleType) throw new Error("All fields are required");
   const payment = paymentService.assertPaymentMethodAvailable(paymentMethod);
-  const { fare, distanceTime, market } = await getFare(pickup, destination);
+  const { fare, distanceTime, market } = await getFare(pickup, destination, { originCoordinates: pickupCoordinates, destinationCoordinates });
   if (!fare || typeof fare[vehicleType] !== "number") throw new Error("Invalid vehicle type or fare unavailable");
 
   if (rideMode === "scheduled") {
@@ -87,6 +105,14 @@ module.exports.createRide = async ({
     user,
     pickup,
     destination,
+    pickupCoordinates: distanceTime.originCoordinates ? {
+      type: "Point",
+      coordinates: [Number(distanceTime.originCoordinates.lng), Number(distanceTime.originCoordinates.ltd)],
+    } : undefined,
+    destinationCoordinates: distanceTime.destinationCoordinates ? {
+      type: "Point",
+      coordinates: [Number(distanceTime.destinationCoordinates.lng), Number(distanceTime.destinationCoordinates.ltd)],
+    } : undefined,
     otp: getOtp(6),
     fare: promo.finalFare,
     originalFare: fare[vehicleType],
