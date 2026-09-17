@@ -4,168 +4,125 @@ const userModel = require("../models/user.model");
 const captainModel = require("../models/captain.model");
 const adminModel = require("../models/admin.model");
 
-
 function getToken(req) {
   const authHeader = req.headers.authorization || "";
-  const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  return req.cookies.token || req.headers.token || bearerToken;
+  const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
+  return req.cookies?.token || req.headers.token || bearerToken || null;
 }
 
-module.exports.authUser = async (req, res, next) => {
+async function decodeRequestToken(req) {
   const token = getToken(req);
+  if (!token) return { error: "missing" };
 
-  if (!token) {
-    return res.status(401).json({ message: "Unauthorized User" });
-  }
-
-  const isBlacklisted = await blacklistTokenModel.findOne({ token });
-  if (isBlacklisted) {
-    return res.status(401).json({ message: "Blacklisted Unauthorized User" });
-  }
+  const isBlacklisted = await blacklistTokenModel.exists({ token });
+  if (isBlacklisted) return { error: "blacklisted" };
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await userModel.findOne({ _id: decoded.id }).populate("rides");
-    if (!user) {
-      return res.status(401).json({ message: "Unauthorized User" });
-    }
-    if (user.status === "suspended") {
-      return res.status(403).json({ message: "Your passenger account has been suspended. Contact support." });
-    }
-
-    req.user = {
-      _id: user._id,
-      fullname: {
-        firstname: user.fullname.firstname,
-        lastname: user.fullname.lastname,
-      },
-      email: user.email,
-      phone: user.phone,
-      rides: user.rides,
-      socketId: user.socketId,
-    };
-    req.userType = "user";
-
-    next();
+    return { token, decoded: jwt.verify(token, process.env.JWT_SECRET) };
   } catch (error) {
-    if (error.message === "jwt expired") {
-      return res.status(401).json({ message: "Token Expired" });
-    } else {
-      return res.status(401).json({ message: "Unauthorized User", error });
-    }
+    return { error: error.name === "TokenExpiredError" ? "expired" : "invalid" };
   }
+}
+
+function authError(res, result, message = "Unauthorized User") {
+  if (result.error === "expired") return res.status(401).json({ message: "Token Expired" });
+  return res.status(401).json({ message });
+}
+
+module.exports.getToken = getToken;
+
+module.exports.authUser = async (req, res, next) => {
+  const result = await decodeRequestToken(req);
+  if (result.error) return authError(res, result);
+  if (result.decoded.userType && result.decoded.userType !== "user") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  const user = await userModel
+    .findById(result.decoded.id)
+    .select("_id fullname email phone socketId emailVerified status")
+    .lean();
+
+  if (!user) return res.status(401).json({ message: "Unauthorized User" });
+  if (user.status === "suspended") {
+    return res.status(403).json({ message: "Your passenger account has been suspended. Contact support." });
+  }
+
+  req.user = user;
+  req.userType = "user";
+  req.authToken = result.token;
+  return next();
 };
 
 module.exports.authCaptain = async (req, res, next) => {
-  const token = getToken(req);
-
-  if (!token) {
-    return res.status(401).json({ message: "Unauthorized User" });
+  const result = await decodeRequestToken(req);
+  if (result.error) return authError(res, result);
+  if (result.decoded.userType && result.decoded.userType !== "captain") {
+    return res.status(403).json({ message: "Forbidden" });
   }
 
-  const isBlacklisted = await blacklistTokenModel.findOne({ token });
-  if (isBlacklisted) {
-    return res.status(401).json({ message: "Unauthorized User" });
+  const captain = await captainModel
+    .findById(result.decoded.id)
+    .select(
+      "_id fullname email phone socketId vehicle status isApproved verificationStatus verificationNote availabilityStatus isOnline activeVehicle profilePhotoUrl vehiclePhotoUrl documents stats earnings rating performanceScore location lastLocationAt lastLocationSource manualLocationLabel"
+    )
+    .lean();
+
+  if (!captain) return res.status(401).json({ message: "Unauthorized User" });
+  if (captain.status === "suspended" || captain.verificationStatus === "suspended") {
+    return res.status(403).json({ message: "Your driver account has been suspended. Contact QuickRide support." });
   }
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const captain = await captainModel
-      .findOne({ _id: decoded.id })
-      .populate("rides");
-    if (!captain) {
-      return res.status(401).json({ message: "Unauthorized User" });
-    }
-    if (captain.status === "suspended" || captain.verificationStatus === "suspended") {
-      return res.status(403).json({ message: "Your driver account has been suspended. Contact QuickRide support." });
-    }
-    req.captain = {
-      _id: captain._id,
-      fullname: {
-        firstname: captain.fullname.firstname,
-        lastname: captain.fullname.lastname,
-      },
-      email: captain.email,
-      phone: captain.phone,
-      rides: captain.rides,
-      socketId: captain.socketId,
-      vehicle: captain.vehicle,
-      status: captain.status,
-      isApproved: captain.isApproved,
-      verificationStatus: captain.verificationStatus,
-      verificationNote: captain.verificationNote,
-      availabilityStatus: captain.availabilityStatus,
-      isOnline: captain.isOnline,
-      activeVehicle: captain.activeVehicle,
-      profilePhotoUrl: captain.profilePhotoUrl,
-      vehiclePhotoUrl: captain.vehiclePhotoUrl,
-      documents: captain.documents,
-      stats: captain.stats,
-      earnings: captain.earnings,
-      rating: captain.rating,
-      performanceScore: captain.performanceScore,
-      location: captain.location,
-    };
-    req.userType = "captain";
-    next();
-  } catch (error) {
-    if (error.message === "jwt expired") {
-      return res.status(401).json({ message: "Token Expired" });
-    } else {
-      return res.status(401).json({ message: "Unauthorized User", error });
-    }
-  }
+  req.captain = captain;
+  req.userType = "captain";
+  req.authToken = result.token;
+  return next();
 };
 
-
 module.exports.authAdmin = async (req, res, next) => {
-  const token = getToken(req);
-  if (!token) return res.status(401).json({ message: "Unauthorized" });
+  const result = await decodeRequestToken(req);
+  if (result.error) return res.status(401).json({ message: "Unauthorized" });
+  if (result.decoded.userType !== "admin") return res.status(403).json({ message: "Forbidden" });
 
-  const isBlacklisted = await blacklistTokenModel.findOne({ token });
-  if (isBlacklisted) return res.status(401).json({ message: "Unauthorized" });
+  const admin = await adminModel.findById(result.decoded.id).lean();
+  if (!admin) return res.status(401).json({ message: "Unauthorized" });
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    if (decoded.userType !== "admin") return res.status(403).json({ message: "Forbidden" });
-    const admin = await adminModel.findById(decoded.id);
-    if (!admin) return res.status(401).json({ message: "Unauthorized" });
-    req.admin = admin;
-    return next();
-  } catch (err) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
+  req.admin = admin;
+  req.userType = "admin";
+  req.authToken = result.token;
+  return next();
 };
 
 module.exports.authAny = async (req, res, next) => {
-  const token = getToken(req);
-  if (!token) return res.status(401).json({ message: "Unauthorized" });
-  const isBlacklisted = await blacklistTokenModel.findOne({ token });
-  if (isBlacklisted) return res.status(401).json({ message: "Unauthorized" });
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    if (decoded.userType === "captain") {
-      const captain = await captainModel.findById(decoded.id);
-      if (!captain) return res.status(401).json({ message: "Unauthorized" });
-      if (captain.status === "suspended" || captain.verificationStatus === "suspended") return res.status(403).json({ message: "Driver account suspended" });
-      req.captain = captain;
-      req.userType = "captain";
-      return next();
+  const result = await decodeRequestToken(req);
+  if (result.error) return res.status(401).json({ message: "Unauthorized" });
+
+  if (result.decoded.userType === "captain") {
+    const captain = await captainModel
+      .findById(result.decoded.id)
+      .select("_id fullname email phone socketId status verificationStatus")
+      .lean();
+    if (!captain) return res.status(401).json({ message: "Unauthorized" });
+    if (captain.status === "suspended" || captain.verificationStatus === "suspended") {
+      return res.status(403).json({ message: "Driver account suspended" });
     }
-    if (decoded.userType === "admin") {
-      const admin = await adminModel.findById(decoded.id);
-      if (!admin) return res.status(401).json({ message: "Unauthorized" });
-      req.admin = admin;
-      req.userType = "admin";
-      return next();
-    }
-    const user = await userModel.findById(decoded.id);
+    req.captain = captain;
+    req.userType = "captain";
+  } else if (result.decoded.userType === "admin") {
+    const admin = await adminModel.findById(result.decoded.id).lean();
+    if (!admin) return res.status(401).json({ message: "Unauthorized" });
+    req.admin = admin;
+    req.userType = "admin";
+  } else {
+    const user = await userModel.findById(result.decoded.id).select("_id fullname email phone socketId status").lean();
     if (!user) return res.status(401).json({ message: "Unauthorized" });
-    if (user.status === "suspended") return res.status(403).json({ message: "Passenger account suspended" });
+    if (user.status === "suspended") {
+      return res.status(403).json({ message: "Passenger account suspended" });
+    }
     req.user = user;
     req.userType = "user";
-    return next();
-  } catch (_) {
-    return res.status(401).json({ message: "Unauthorized" });
   }
+
+  req.authToken = result.token;
+  return next();
 };
