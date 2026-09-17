@@ -40,6 +40,7 @@ router.get("/vehicles", auth.authAdmin, adminController.listVehicles);
 router.patch("/vehicles/:id/docs", auth.authAdmin, adminController.updateVehicleDocs);
 
 router.get("/analytics/summary", auth.authAdmin, adminController.analyticsSummary);
+router.get("/analytics/demand-forecast", auth.authAdmin, adminController.analyticsDemandForecast);
 router.get("/online-captains", auth.authAdmin, adminController.onlineCaptains);
 
 router.post("/incentives", auth.authAdmin, adminController.createIncentive);
