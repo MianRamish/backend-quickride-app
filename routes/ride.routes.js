@@ -27,12 +27,22 @@ router.post("/create", auth.authUser,
   body("scheduledFor").optional({ nullable: true, checkFalsy: true }).isISO8601().withMessage("Invalid scheduled date"),
   body("paymentMethod").optional().isIn(["cash", "card"]).withMessage("Invalid payment method"),
   body("promoCode").optional({ nullable: true, checkFalsy: true }).isString().isLength({ max: 40 }),
+  body("pickupCoordinates").optional({ nullable: true }).isObject(),
+  body("pickupCoordinates.lat").optional().isFloat({ min: -90, max: 90 }),
+  body("pickupCoordinates.lng").optional().isFloat({ min: -180, max: 180 }),
+  body("destinationCoordinates").optional({ nullable: true }).isObject(),
+  body("destinationCoordinates.lat").optional().isFloat({ min: -90, max: 90 }),
+  body("destinationCoordinates.lng").optional().isFloat({ min: -180, max: 180 }),
   rideController.createRide
 );
 
 router.get("/get-fare", auth.authUser,
   query("pickup").isString().isLength({ min: 3 }).withMessage("Invalid pickup address"),
   query("destination").isString().isLength({ min: 3 }).withMessage("Invalid destination address"),
+  query("pickupLat").optional().isFloat({ min: -90, max: 90 }),
+  query("pickupLng").optional().isFloat({ min: -180, max: 180 }),
+  query("destinationLat").optional().isFloat({ min: -90, max: 90 }),
+  query("destinationLng").optional().isFloat({ min: -180, max: 180 }),
   rideController.getFare
 );
 
