@@ -22,6 +22,8 @@ const GEOCODING_TIMEOUT_MS = Number(process.env.GEOCODING_TIMEOUT_MS || 5000);
 const SUGGESTION_TIMEOUT_MS = Number(process.env.SUGGESTION_TIMEOUT_MS || 3000);
 const suggestionCache = new Map();
 const SUGGESTION_CACHE_TTL = 5 * 60 * 1000;
+const resolvedPlaceCache = new Map();
+const RESOLVED_PLACE_CACHE_TTL = 30 * 60 * 1000;
 const providerDisabledUntil = { nominatim: 0, photon: 0 };
 
 const normalizeText = (value = "") =>
@@ -32,6 +34,44 @@ const normalizeText = (value = "") =>
     .replace(/[^a-z0-9\s-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+
+const normalizeCoordinatePair = (value) => {
+  if (!value) return null;
+  const ltd = Number(value.ltd ?? value.lat ?? value.latitude);
+  const lng = Number(value.lng ?? value.lon ?? value.longitude);
+  if (!Number.isFinite(ltd) || !Number.isFinite(lng)) return null;
+  if (ltd < -90 || ltd > 90 || lng < -180 || lng > 180) return null;
+  return { ltd, lng, provider: value.provider || "provided-coordinates" };
+};
+
+const parseCoordinateAddress = (value) => {
+  const text = String(value || "");
+  const match = text.match(/(?:current\s+location\s*)?\(?\s*(-?\d{1,2}(?:\.\d+)?)\s*[,;]\s*(-?\d{1,3}(?:\.\d+)?)\s*\)?/i);
+  if (!match) return null;
+  return normalizeCoordinatePair({ ltd: Number(match[1]), lng: Number(match[2]), provider: "coordinate-label" });
+};
+
+const cacheResolvedPlace = (address, result) => {
+  const key = normalizeText(address);
+  const coordinates = normalizeCoordinatePair(result);
+  if (!key || !coordinates) return;
+  resolvedPlaceCache.set(key, {
+    createdAt: Date.now(),
+    result: { ...coordinates, displayName: result.displayName || address, provider: result.provider || coordinates.provider },
+  });
+};
+
+const getCachedPlace = (address) => {
+  const key = normalizeText(address);
+  if (!key) return null;
+  const cached = resolvedPlaceCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.createdAt > RESOLVED_PLACE_CACHE_TTL) {
+    resolvedPlaceCache.delete(key);
+    return null;
+  }
+  return cached.result;
+};
 
 const placeSearchText = (place) =>
   normalizeText([place.name, place.displayName, place.category, ...(place.aliases || [])].join(" "));
@@ -218,12 +258,15 @@ const getNominatimResult = async (address) => {
 
     const result = response.data?.[0];
     if (!result) return null;
-    return {
+    const resolved = {
       ltd: Number(result.lat),
       lng: Number(result.lon),
       displayName: result.display_name,
       provider: "nominatim",
     };
+    cacheResolvedPlace(address, resolved);
+    if (resolved.displayName) cacheResolvedPlace(resolved.displayName, resolved);
+    return resolved;
   } catch (error) {
     disableProviderTemporarily("nominatim", error);
     throw error;
@@ -247,12 +290,15 @@ const getPhotonResult = async (address) => {
       .filter(Boolean)
       .join(", ");
 
-    return {
+    const resolved = {
       ltd: Number(coordinates[1]),
       lng: Number(coordinates[0]),
       displayName: displayName || address,
       provider: "photon",
     };
+    cacheResolvedPlace(address, resolved);
+    if (resolved.displayName) cacheResolvedPlace(resolved.displayName, resolved);
+    return resolved;
   } catch (error) {
     disableProviderTemporarily("photon", error);
     throw error;
@@ -262,6 +308,12 @@ const getPhotonResult = async (address) => {
 const getFirstAddressResult = async (address) => {
   const cleanAddress = String(address || "").trim();
   if (!cleanAddress) throw new Error("Address is required");
+
+  const coordinateResult = parseCoordinateAddress(cleanAddress);
+  if (coordinateResult) return { ...coordinateResult, displayName: cleanAddress };
+
+  const cachedPlace = getCachedPlace(cleanAddress);
+  if (cachedPlace) return cachedPlace;
 
   const knownPlaceResult = getKnownPlaceResult(cleanAddress);
   if (knownPlaceResult) return knownPlaceResult;
@@ -307,7 +359,17 @@ const getPhotonSuggestions = async (input) => {
     return (response.data?.features || [])
       .map((feature) => {
         const props = feature.properties || {};
-        return [props.name, props.city, props.state, props.country].filter(Boolean).join(", ");
+        const displayName = [props.name, props.city, props.state, props.country].filter(Boolean).join(", ");
+        const coordinates = feature?.geometry?.coordinates;
+        if (displayName && Array.isArray(coordinates) && coordinates.length >= 2) {
+          cacheResolvedPlace(displayName, {
+            ltd: Number(coordinates[1]),
+            lng: Number(coordinates[0]),
+            displayName,
+            provider: "photon-suggestion",
+          });
+        }
+        return displayName;
       })
       .filter(Boolean);
   } catch (error) {
@@ -319,12 +381,14 @@ const getPhotonSuggestions = async (input) => {
 
 module.exports.getAddressCoordinate = async (address) => getFirstAddressResult(address);
 
-module.exports.getDistanceTime = async (origin, destination) => {
+module.exports.getDistanceTime = async (origin, destination, options = {}) => {
   if (!origin || !destination) throw new Error("Origin and destination are required");
 
+  const suppliedOrigin = normalizeCoordinatePair(options.originCoordinates);
+  const suppliedDestination = normalizeCoordinatePair(options.destinationCoordinates);
   const [originCoordinates, destinationCoordinates] = await Promise.all([
-    getFirstAddressResult(origin),
-    getFirstAddressResult(destination),
+    suppliedOrigin ? Promise.resolve({ ...suppliedOrigin, displayName: origin }) : getFirstAddressResult(origin),
+    suppliedDestination ? Promise.resolve({ ...suppliedDestination, displayName: destination }) : getFirstAddressResult(destination),
   ]);
 
   const coordinates = `${originCoordinates.lng},${originCoordinates.ltd};${destinationCoordinates.lng},${destinationCoordinates.ltd}`;
@@ -407,6 +471,32 @@ module.exports.reverseGeocode = async (ltd, lng) => {
   const lat = Number(ltd);
   const lon = Number(lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error("Valid coordinates are required");
+
+  if (isProviderAvailable("nominatim")) {
+    try {
+      const response = await http.get(`${NOMINATIM_URL}/reverse`, {
+        timeout: GEOCODING_TIMEOUT_MS,
+        params: {
+          lat,
+          lon,
+          format: "jsonv2",
+          zoom: 18,
+          addressdetails: 1,
+          ...(GEOCODING_CONTACT_EMAIL ? { email: GEOCODING_CONTACT_EMAIL } : {}),
+        },
+      });
+      const displayName = response.data?.display_name;
+      if (displayName) {
+        const resolved = { ltd: lat, lng: lon, displayName, provider: "nominatim-reverse" };
+        cacheResolvedPlace(displayName, resolved);
+        return { address: displayName, ltd: lat, lng: lon, source: "nominatim" };
+      }
+    } catch (error) {
+      disableProviderTemporarily("nominatim", error);
+      console.warn(`Reverse geocoding unavailable (${error?.response?.status || error.code || error.message}). Using coordinate fallback.`);
+    }
+  }
+
   const toRad = (n) => (n * Math.PI) / 180;
   const distanceKm = (aLat, aLng, bLat, bLng) => {
     const r = 6371;
@@ -419,7 +509,11 @@ module.exports.reverseGeocode = async (ltd, lng) => {
     .map((place) => ({ place, km: distanceKm(lat, lon, Number(place.ltd), Number(place.lng)) }))
     .sort((a, b) => a.km - b.km)[0];
   if (nearest && nearest.km <= 8) {
+    cacheResolvedPlace(nearest.place.displayName, { ltd: lat, lng: lon, displayName: nearest.place.displayName, provider: "nigeria-index-reverse" });
     return { address: nearest.place.displayName, ltd: lat, lng: lon, source: "nigeria_index", distanceKm: Math.round(nearest.km * 10) / 10 };
   }
-  return { address: `Current location (${lat.toFixed(5)}, ${lon.toFixed(5)}), Nigeria`, ltd: lat, lng: lon, source: "coordinates" };
+
+  const coordinateLabel = `Current location (${lat.toFixed(5)}, ${lon.toFixed(5)})`;
+  cacheResolvedPlace(coordinateLabel, { ltd: lat, lng: lon, displayName: coordinateLabel, provider: "coordinates" });
+  return { address: coordinateLabel, ltd: lat, lng: lon, source: "coordinates" };
 };
