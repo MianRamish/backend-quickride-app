@@ -64,7 +64,7 @@ module.exports.authCaptain = async (req, res, next) => {
   const captain = await captainModel
     .findById(result.decoded.id)
     .select(
-      "_id fullname email phone socketId vehicle status isApproved verificationStatus verificationNote availabilityStatus isOnline activeVehicle profilePhotoUrl vehiclePhotoUrl documents stats earnings rating performanceScore location lastLocationAt lastLocationSource manualLocationLabel"
+      "_id fullname email phone socketId vehicle status isApproved verificationStatus verificationNote availabilityStatus isOnline activeVehicle location lastLocationAt lastLocationSource manualLocationLabel"
     )
     .lean();
 
