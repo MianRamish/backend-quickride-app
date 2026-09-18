@@ -41,6 +41,7 @@ const getFare = async (pickup, destination, options = {}) => {
     fare: { bike: bike.total, car: car.total },
     fareBreakdown: { car, bike },
     distanceTime,
+    estimateType: distanceTime.approximate ? "approximate" : "live_route",
     market: inferMarket(),
     pricing: {
       car: pricing.car,
@@ -91,6 +92,12 @@ module.exports.createRide = async ({
   if (!user || !pickup || !destination || !vehicleType) throw new Error("All fields are required");
   const payment = paymentService.assertPaymentMethodAvailable(paymentMethod);
   const { fare, distanceTime, market } = await getFare(pickup, destination, { originCoordinates: pickupCoordinates, destinationCoordinates });
+  if (distanceTime.approximate) {
+    const error = new Error("Live route pricing is temporarily unavailable. The fare shown is approximate and cannot be confirmed yet. Please try again shortly.");
+    error.code = "ROUTE_ESTIMATE_ONLY";
+    error.statusCode = 503;
+    throw error;
+  }
   if (!fare || typeof fare[vehicleType] !== "number") throw new Error("Invalid vehicle type or fare unavailable");
 
   if (rideMode === "scheduled") {
