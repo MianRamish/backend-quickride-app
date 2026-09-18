@@ -86,7 +86,7 @@ module.exports.createRide = async (req, res) => {
     await rideModel.findByIdAndUpdate(ride._id, { requestExpiresAt: new Date(Date.now() + Math.max(60000, Number(config.rideOfferSeconds || 20) * 5 * 1000)) });
     matchingService.dispatchRide(ride._id).catch((error) => console.error("Ride matching failed:", error.message));
   } catch (err) {
-    return res.status(err.statusCode || 400).json({ message: err.message });
+    return res.status(err.statusCode || 400).json({ message: err.message, code: err.code || undefined });
   }
 };
 
@@ -105,7 +105,7 @@ module.exports.getFare = async (req, res) => {
     });
     return res.json(result);
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return res.status(err.statusCode || 500).json({ message: err.message, code: err.code || undefined });
   }
 };
 
