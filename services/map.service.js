@@ -15,6 +15,10 @@ const MAP_COUNTRY_CODES = (process.env.MAP_COUNTRY_CODES || "ng")
 
 const NIGERIA_BBOX = process.env.MAP_SEARCH_BBOX || "2.4,4.2,14.7,13.9";
 const bboxParts = NIGERIA_BBOX.split(",").map(Number);
+const SERVICE_AREA_NAME = String(process.env.SERVICE_AREA_NAME || "Nigeria").trim() || "Nigeria";
+const SERVICE_AREA_BOUNDS = bboxParts.length === 4 && bboxParts.every(Number.isFinite)
+  ? { west: bboxParts[0], south: bboxParts[1], east: bboxParts[2], north: bboxParts[3] }
+  : { west: 2.4, south: 4.2, east: 14.7, north: 13.9 };
 const NOMINATIM_VIEWBOX = bboxParts.length === 4 && bboxParts.every(Number.isFinite)
   ? `${bboxParts[0]},${bboxParts[3]},${bboxParts[2]},${bboxParts[1]}`
   : "2.4,13.9,14.7,4.2";
@@ -42,6 +46,25 @@ const normalizeCoordinatePair = (value) => {
   if (!Number.isFinite(ltd) || !Number.isFinite(lng)) return null;
   if (ltd < -90 || ltd > 90 || lng < -180 || lng > 180) return null;
   return { ltd, lng, provider: value.provider || "provided-coordinates" };
+};
+
+const isWithinServiceArea = (value) => {
+  const coordinates = normalizeCoordinatePair(value);
+  if (!coordinates) return false;
+  return coordinates.lng >= SERVICE_AREA_BOUNDS.west
+    && coordinates.lng <= SERVICE_AREA_BOUNDS.east
+    && coordinates.ltd >= SERVICE_AREA_BOUNDS.south
+    && coordinates.ltd <= SERVICE_AREA_BOUNDS.north;
+};
+
+const assertWithinServiceArea = (value, label = "location") => {
+  if (isWithinServiceArea(value)) return;
+  const error = new Error(
+    `QuickRide is not currently available at this ${label} location. Service is currently limited to ${SERVICE_AREA_NAME}.`
+  );
+  error.code = "OUTSIDE_SERVICE_AREA";
+  error.statusCode = 422;
+  throw error;
 };
 
 const parseCoordinateAddress = (value) => {
@@ -391,6 +414,9 @@ module.exports.getDistanceTime = async (origin, destination, options = {}) => {
     suppliedDestination ? Promise.resolve({ ...suppliedDestination, displayName: destination }) : getFirstAddressResult(destination),
   ]);
 
+  assertWithinServiceArea(originCoordinates, "pickup");
+  assertWithinServiceArea(destinationCoordinates, "drop-off");
+
   const coordinates = `${originCoordinates.lng},${originCoordinates.ltd};${destinationCoordinates.lng},${destinationCoordinates.ltd}`;
 
   try {
@@ -471,6 +497,7 @@ module.exports.reverseGeocode = async (ltd, lng) => {
   const lat = Number(ltd);
   const lon = Number(lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error("Valid coordinates are required");
+  assertWithinServiceArea({ ltd: lat, lng: lon }, "pickup");
 
   if (isProviderAvailable("nominatim")) {
     try {
