@@ -8,6 +8,67 @@ const payoutModel = require("../models/payout.model");
 const userModel = require("../models/user.model");
 const { normalizeNigeriaPhone } = require("../utils/nigeria");
 const promoService = require("../services/promo.service");
+const operationsService = require("../services/operations.service");
+const NIGERIA_PLACES = require("../data/nigeria.places");
+
+const FORECAST_TIME_ZONE = "Africa/Lagos";
+const forecastFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: FORECAST_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  weekday: "short",
+  hour: "2-digit",
+  hourCycle: "h23",
+});
+
+function forecastParts(value) {
+  const parts = Object.fromEntries(forecastFormatter.formatToParts(new Date(value)).map((part) => [part.type, part.value]));
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    weekday: parts.weekday,
+    hour: Number(parts.hour),
+  };
+}
+
+function forecastSlotKey(value) {
+  const parts = forecastParts(value);
+  return `${parts.date}|${parts.hour}`;
+}
+
+function normalizeForecastText(value = "") {
+  return String(value).toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s-]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function forecastZoneFromPickup(value) {
+  const normalized = normalizeForecastText(value);
+  if (!normalized) return "Unknown";
+  const candidates = NIGERIA_PLACES
+    .filter((place) => ["area", "city"].includes(place.category))
+    .map((place) => ({ place, key: normalizeForecastText(place.name) }))
+    .filter(({ key }) => key && normalized.includes(key))
+    .sort((a, b) => b.key.length - a.key.length);
+  if (candidates[0]) return candidates[0].place.name;
+  return String(value).split(",")[0].trim().slice(0, 60) || "Unknown";
+}
+
+function nearestForecastZone(location) {
+  const lng = Number(location?.coordinates?.[0]);
+  const lat = Number(location?.coordinates?.[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return "Unknown";
+  const rad = (n) => (n * Math.PI) / 180;
+  const distance = (place) => {
+    const dLat = rad(Number(place.ltd) - lat);
+    const dLng = rad(Number(place.lng) - lng);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat)) * Math.cos(rad(Number(place.ltd))) * Math.sin(dLng / 2) ** 2;
+    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+  const nearest = NIGERIA_PLACES
+    .filter((place) => ["area", "city"].includes(place.category))
+    .map((place) => ({ place, km: distance(place) }))
+    .sort((a, b) => a.km - b.km)[0];
+  return nearest && nearest.km <= 35 ? nearest.place.name : "Other";
+}
 
 async function ensureSeedAdmin() {
   const email = process.env.ADMIN_EMAIL;
@@ -173,6 +234,175 @@ module.exports.analyticsSummary = async (_req, res) => {
     today: todayAgg?.[0] || { trips: 0, fare: 0, commission: 0 },
     paymentMode: "cash",
   });
+};
+
+module.exports.analyticsDemandForecast = async (req, res) => {
+  try {
+    const horizonHours = Math.max(6, Math.min(24, Number(req.query.horizon || 12)));
+    const historyWeeks = 8;
+    const now = new Date();
+    const forecastStart = new Date(now);
+    forecastStart.setUTCMinutes(0, 0, 0);
+    forecastStart.setUTCHours(forecastStart.getUTCHours() + 1);
+    const forecastEnd = new Date(forecastStart.getTime() + horizonHours * 60 * 60 * 1000);
+    const historyStart = new Date(forecastStart.getTime() - historyWeeks * 7 * 24 * 60 * 60 * 1000);
+    const config = await operationsService.getConfig();
+    const staleSeconds = Math.max(15, Number(config.driverLocationStaleSeconds || 120));
+    const freshAfter = new Date(now.getTime() - staleSeconds * 1000);
+
+    const [historicalRides, scheduledRides, onlineDrivers] = await Promise.all([
+      rideModel.find({
+        $or: [
+          { rideMode: { $ne: "scheduled" }, createdAt: { $gte: historyStart, $lt: now } },
+          { rideMode: "scheduled", scheduledFor: { $gte: historyStart, $lt: now } },
+        ],
+      }).select("createdAt scheduledFor rideMode pickup duration status").lean(),
+      rideModel.find({ status: "scheduled", scheduledFor: { $gte: forecastStart, $lt: forecastEnd } }).select("scheduledFor pickup").lean(),
+      captainModel.find({
+        isApproved: true,
+        status: "active",
+        isOnline: true,
+        socketId: { $ne: null },
+        lastLocationAt: { $gte: freshAfter },
+        availabilityStatus: { $in: ["online_available", "ride_requested", "on_trip"] },
+      }).select("location availabilityStatus").lean(),
+    ]);
+
+    const slotCounts = new Map();
+    const slotZones = new Map();
+    const validDurations = [];
+    for (const ride of historicalRides) {
+      const demandAt = ride.rideMode === "scheduled" && ride.scheduledFor ? ride.scheduledFor : ride.createdAt;
+      const slot = forecastSlotKey(demandAt);
+      slotCounts.set(slot, (slotCounts.get(slot) || 0) + 1);
+      const zone = forecastZoneFromPickup(ride.pickup);
+      if (!slotZones.has(slot)) slotZones.set(slot, new Map());
+      const zoneMap = slotZones.get(slot);
+      zoneMap.set(zone, (zoneMap.get(zone) || 0) + 1);
+      const minutes = Number(ride.duration || 0) / 60;
+      if (ride.status === "completed" && Number.isFinite(minutes) && minutes >= 5 && minutes <= 120) validDurations.push(minutes);
+    }
+
+    const averageTripMinutes = validDurations.length
+      ? Math.round(validDurations.reduce((sum, value) => sum + value, 0) / validDurations.length)
+      : 30;
+    const ridesPerDriverPerHour = Math.max(0.6, Math.min(2.5, 60 / Math.max(15, averageTripMinutes)));
+    const availableDriversNow = onlineDrivers.filter((driver) => driver.availabilityStatus === "online_available").length;
+    const busyDriversNow = onlineDrivers.filter((driver) => ["ride_requested", "on_trip"].includes(driver.availabilityStatus)).length;
+    const currentZoneSupply = new Map();
+    for (const driver of onlineDrivers.filter((item) => item.availabilityStatus === "online_available")) {
+      const zone = nearestForecastZone(driver.location);
+      currentZoneSupply.set(zone, (currentZoneSupply.get(zone) || 0) + 1);
+    }
+
+    const totalHistoricalHours = Math.max(1, historyWeeks * 7 * 24);
+    const networkHourlyAverage = historicalRides.length / totalHistoricalHours;
+    const buckets = [];
+    const zoneDemandAcrossWindow = new Map();
+
+    for (let index = 0; index < horizonHours; index += 1) {
+      const startsAt = new Date(forecastStart.getTime() + index * 60 * 60 * 1000);
+      const endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000);
+      let weightedDemand = 0;
+      let totalWeight = 0;
+      const weightedZones = new Map();
+
+      for (let week = 1; week <= historyWeeks; week += 1) {
+        const historicalSlot = new Date(startsAt.getTime() - week * 7 * 24 * 60 * 60 * 1000);
+        const key = forecastSlotKey(historicalSlot);
+        const weight = historyWeeks - week + 1;
+        weightedDemand += (slotCounts.get(key) || 0) * weight;
+        totalWeight += weight;
+        const zones = slotZones.get(key);
+        if (zones) {
+          for (const [zone, count] of zones.entries()) weightedZones.set(zone, (weightedZones.get(zone) || 0) + count * weight);
+        }
+      }
+
+      const historicalExpected = totalWeight ? weightedDemand / totalWeight : 0;
+      const scheduledInBucket = scheduledRides.filter((ride) => {
+        const value = new Date(ride.scheduledFor).getTime();
+        return value >= startsAt.getTime() && value < endsAt.getTime();
+      });
+      const scheduledCount = scheduledInBucket.length;
+      const predictedRequests = Math.round((historicalExpected + scheduledCount) * 10) / 10;
+      const hoursAhead = index + 1;
+      const releaseShare = Math.min(1, (hoursAhead * 60) / Math.max(20, averageTripMinutes));
+      const projectedSupply = availableDriversNow + Math.round(busyDriversNow * releaseShare);
+      const requiredDrivers = predictedRequests > 0 ? Math.ceil(predictedRequests / ridesPerDriverPerHour) : 0;
+      const driverGap = Math.max(0, requiredDrivers - projectedSupply);
+      const spikeRatio = networkHourlyAverage > 0 ? predictedRequests / networkHourlyAverage : predictedRequests > 0 ? 2 : 0;
+      const risk = driverGap >= 3 ? "critical" : driverGap > 0 ? "high" : spikeRatio >= 1.5 ? "watch" : "normal";
+
+      const zoneForecast = new Map();
+      if (totalWeight) {
+        for (const [zone, weightedCount] of weightedZones.entries()) zoneForecast.set(zone, weightedCount / totalWeight);
+      }
+      for (const ride of scheduledInBucket) {
+        const zone = forecastZoneFromPickup(ride.pickup);
+        zoneForecast.set(zone, (zoneForecast.get(zone) || 0) + 1);
+      }
+      const topZones = [...zoneForecast.entries()]
+        .map(([zone, demand]) => ({ zone, predictedRequests: Math.round(demand * 10) / 10 }))
+        .filter((item) => item.predictedRequests > 0)
+        .sort((a, b) => b.predictedRequests - a.predictedRequests)
+        .slice(0, 4);
+      if (index < Math.min(4, horizonHours)) {
+        for (const item of topZones) zoneDemandAcrossWindow.set(item.zone, (zoneDemandAcrossWindow.get(item.zone) || 0) + item.predictedRequests);
+      }
+
+      buckets.push({
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+        localLabel: new Intl.DateTimeFormat("en-NG", { timeZone: FORECAST_TIME_ZONE, weekday: "short", hour: "numeric" }).format(startsAt),
+        historicalExpected: Math.round(historicalExpected * 10) / 10,
+        scheduledCount,
+        predictedRequests,
+        projectedSupply,
+        requiredDrivers,
+        driverGap,
+        spikeRatio: Math.round(spikeRatio * 100) / 100,
+        risk,
+        topZones,
+      });
+    }
+
+    const windowHours = Math.min(4, horizonHours);
+    const zoneRecommendations = [...zoneDemandAcrossWindow.entries()]
+      .map(([zone, predictedRequests]) => {
+        const currentDrivers = currentZoneSupply.get(zone) || 0;
+        const requiredDrivers = predictedRequests > 0 ? Math.ceil(predictedRequests / (ridesPerDriverPerHour * windowHours)) : 0;
+        return {
+          zone,
+          predictedRequests: Math.round(predictedRequests * 10) / 10,
+          currentDrivers,
+          requiredDrivers,
+          driverGap: Math.max(0, requiredDrivers - currentDrivers),
+        };
+      })
+      .sort((a, b) => b.driverGap - a.driverGap || b.predictedRequests - a.predictedRequests)
+      .slice(0, 8);
+
+    const confidence = historicalRides.length >= 500 ? "high" : historicalRides.length >= 100 ? "medium" : "low";
+    return res.json({
+      generatedAt: now.toISOString(),
+      timezone: FORECAST_TIME_ZONE,
+      horizonHours,
+      historyWeeks,
+      confidence,
+      sampleSize: historicalRides.length,
+      averageTripMinutes,
+      ridesPerDriverPerHour: Math.round(ridesPerDriverPerHour * 100) / 100,
+      availableDriversNow,
+      busyDriversNow,
+      buckets,
+      zoneRecommendations,
+      methodology: "Weighted same-weekday/hour demand from the last 8 weeks plus known scheduled pickups. Supply is based on currently online drivers and assumes currently busy drivers become available after typical trip duration.",
+    });
+  } catch (error) {
+    console.error("Demand forecast failed:", error);
+    return res.status(500).json({ message: "Unable to build demand forecast" });
+  }
 };
 
 module.exports.onlineCaptains = async (_req, res) => {
