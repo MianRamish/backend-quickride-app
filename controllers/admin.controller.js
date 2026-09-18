@@ -52,6 +52,16 @@ function forecastZoneFromPickup(value) {
   return String(value).split(",")[0].trim().slice(0, 60) || "Unknown";
 }
 
+function forecastZoneCoordinates(zone) {
+  const normalized = normalizeForecastText(zone);
+  if (!normalized || ["unknown", "other"].includes(normalized)) return null;
+  const place = NIGERIA_PLACES.find((item) =>
+    ["area", "city"].includes(item.category) && normalizeForecastText(item.name) === normalized
+  );
+  if (!place) return null;
+  return { lat: Number(place.ltd), lng: Number(place.lng) };
+}
+
 function nearestForecastZone(location) {
   const lng = Number(location?.coordinates?.[0]);
   const lat = Number(location?.coordinates?.[1]);
@@ -372,12 +382,15 @@ module.exports.analyticsDemandForecast = async (req, res) => {
       .map(([zone, predictedRequests]) => {
         const currentDrivers = currentZoneSupply.get(zone) || 0;
         const requiredDrivers = predictedRequests > 0 ? Math.ceil(predictedRequests / (ridesPerDriverPerHour * windowHours)) : 0;
+        const coordinates = forecastZoneCoordinates(zone);
         return {
           zone,
           predictedRequests: Math.round(predictedRequests * 10) / 10,
           currentDrivers,
           requiredDrivers,
           driverGap: Math.max(0, requiredDrivers - currentDrivers),
+          lat: coordinates?.lat ?? null,
+          lng: coordinates?.lng ?? null,
         };
       })
       .sort((a, b) => b.driverGap - a.driverGap || b.predictedRequests - a.predictedRequests)
