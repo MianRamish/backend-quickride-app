@@ -61,6 +61,9 @@ module.exports.reverseGeocode = async (req, res) => {
     const result = await mapService.reverseGeocode(req.query.lat, req.query.lng);
     res.json(result);
   } catch (error) {
-    res.status(400).json({ message: error.message || "Unable to resolve current location" });
+    res.status(error.statusCode || 400).json({
+      message: error.message || "Unable to resolve current location",
+      code: error.code || undefined,
+    });
   }
 };
