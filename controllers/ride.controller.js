@@ -195,7 +195,14 @@ async function cancellationFeeFor(ride, by) {
 
 module.exports.cancelRideUser = async (req, res) => {
   if (errorsOrNull(req, res)) return;
-  const { rideId, reasonCode = "OTHER", reasonText = "" } = req.body;
+  const { rideId, reasonCode, reasonText = "" } = req.body;
+  const selectedReason = USER_CANCEL_REASONS.find((item) => item.code === reasonCode);
+  const cleanReasonText = String(reasonText || "").trim();
+  if (!selectedReason) return res.status(400).json({ message: "Please select a valid cancellation reason" });
+  if (!cleanReasonText) return res.status(400).json({ message: "Cancellation reason is required" });
+  if (reasonCode === "OTHER" && cleanReasonText.length < 3) {
+    return res.status(400).json({ message: "Please tell us why you are cancelling" });
+  }
   try {
     const current = await rideModel.findOne({ _id: rideId, user: req.user._id }).populate("captain").populate("user");
     if (!current) return res.status(404).json({ message: "Ride not found" });
@@ -204,17 +211,17 @@ module.exports.cancelRideUser = async (req, res) => {
     await matchingService.stopRideMatching(current);
     current.status = "cancelled";
     current.cancelledBy = "user";
-    current.cancelReason = { code: reasonCode, text: reasonText };
+    current.cancelReason = { code: reasonCode, text: cleanReasonText };
     current.cancellationFee = fee;
     current.cancellationFeeReason = reason;
     current.scheduledStatus = current.rideMode === "scheduled" ? "cancelled" : current.scheduledStatus;
     current.chatClosedAt = new Date();
-    current.statusTimeline.push({ status: "cancelled", at: new Date(), by: "user", note: reasonText || reasonCode });
+    current.statusTimeline.push({ status: "cancelled", at: new Date(), by: "user", note: cleanReasonText });
     await current.save();
     await promoService.releasePromoUsage(current._id);
     if (current.captain?._id) {
       await captainModel.findByIdAndUpdate(current.captain._id, { availabilityStatus: "online_available", currentOfferRide: null, currentOfferExpiresAt: null });
-      await notificationService.notify({ recipientType: "captain", recipient: current.captain._id, type: "ride", title: "Passenger cancelled", body: reasonText || "The passenger cancelled this ride.", ride: current._id });
+      await notificationService.notify({ recipientType: "captain", recipient: current.captain._id, type: "ride", title: "Passenger cancelled", body: cleanReasonText, ride: current._id });
     }
     if (current.captain?.socketId) sendMessageToSocketId(current.captain.socketId, { event: "ride-cancelled", data: current });
     await notificationService.notify({ recipientType: "user", recipient: current.user._id, type: "ride", title: "Ride cancelled", body: fee > 0 ? `Ride cancelled. A ₦${Number(fee).toLocaleString("en-NG")} cancellation fee applies.` : "Your ride was cancelled.", ride: current._id });
@@ -397,10 +404,10 @@ module.exports.publicSharedTrip = async (req, res) => {
   }
 };
 
-// Legacy GET cancellation route for older clients.
-module.exports.cancelRide = async (req, res) => {
-  req.body = { rideId: req.query.rideId, reasonCode: "LEGACY_CANCEL", reasonText: "Cancelled from legacy client" };
-  return module.exports.cancelRideUser(req, res);
+// Legacy GET cancellation route is intentionally disabled because passenger
+// cancellations now require an explicit reason selected in the current app.
+module.exports.cancelRide = async (_req, res) => {
+  return res.status(400).json({ message: "Please update QuickRide and select a cancellation reason before cancelling." });
 };
 
 module.exports.rideContact = async (req, res) => {
