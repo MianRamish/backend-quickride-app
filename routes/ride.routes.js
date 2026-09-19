@@ -53,7 +53,16 @@ router.post("/reject", auth.authCaptain,
   body("rideId").isMongoId(), body("reasonCode").optional().isString(), body("reasonText").optional().isString(), rideController.rejectRide
 );
 router.post("/cancel-user", auth.authUser,
-  body("rideId").isMongoId(), body("reasonCode").optional().isString(), body("reasonText").optional().isString(), rideController.cancelRideUser
+  body("rideId").isMongoId(),
+  body("reasonCode")
+    .isIn(["DRIVER_LATE", "DRIVER_ASKED", "WRONG_PICKUP", "CHANGE_OF_PLANS", "FOUND_OTHER_RIDE", "OTHER"])
+    .withMessage("Please select a valid cancellation reason"),
+  body("reasonText")
+    .isString()
+    .trim()
+    .isLength({ min: 2, max: 200 })
+    .withMessage("Cancellation reason is required"),
+  rideController.cancelRideUser
 );
 router.post("/cancel-captain", auth.authCaptain,
   body("rideId").isMongoId(), body("reasonCode").optional().isString(), body("reasonText").optional().isString(), rideController.cancelRideCaptain
