@@ -239,6 +239,77 @@ const calculateHaversineDistance = (from, to) => {
   return earthRadiusMeters * c;
 };
 
+const nearestKnownLandmark = (lat, lon, maxKm = 4) => {
+  const landmarkCategories = new Set(["landmark", "airport", "university", "hospital", "mall", "market", "hotel"]);
+  const candidates = NIGERIA_PLACES
+    .filter((place) => landmarkCategories.has(place.category))
+    .map((place) => ({
+      place,
+      km: calculateHaversineDistance(
+        { ltd: Number(lat), lng: Number(lon) },
+        { ltd: Number(place.ltd), lng: Number(place.lng) }
+      ) / 1000,
+    }))
+    .filter((item) => Number.isFinite(item.km) && item.km <= maxKm)
+    .sort((a, b) => a.km - b.km);
+  return candidates[0] || null;
+};
+
+const buildReverseGeocodeDetails = (data, lat, lon) => {
+  const address = data?.address || {};
+  const road = address.road || address.pedestrian || address.footway || address.path || address.residential || "";
+  const street = [address.house_number, road].filter(Boolean).join(" ").trim();
+  const area =
+    address.neighbourhood ||
+    address.suburb ||
+    address.quarter ||
+    address.city_district ||
+    address.village ||
+    address.town ||
+    "";
+  const city =
+    address.city ||
+    address.town ||
+    address.municipality ||
+    address.county ||
+    "";
+  const state = address.state || address.state_district || "";
+  const postalCode = address.postcode || "";
+  const country = address.country || SERVICE_AREA_NAME;
+
+  const providerLandmark =
+    data?.name &&
+    !["highway", "place", "boundary"].includes(String(data?.category || "").toLowerCase())
+      ? String(data.name).trim()
+      : "";
+  const nearby = nearestKnownLandmark(lat, lon);
+  const landmark = providerLandmark || nearby?.place?.name || "";
+  const landmarkDistanceKm = providerLandmark ? null : nearby ? Math.round(nearby.km * 10) / 10 : null;
+
+  const parts = [];
+  if (street) parts.push(street);
+  if (landmark && !normalizeText(street).includes(normalizeText(landmark))) parts.push(`near ${landmark}`);
+  if (area && !parts.some((item) => normalizeText(item).includes(normalizeText(area)))) parts.push(area);
+  if (city && !parts.some((item) => normalizeText(item).includes(normalizeText(city)))) parts.push(city);
+  if (state && !parts.some((item) => normalizeText(item).includes(normalizeText(state)))) parts.push(state);
+  if (postalCode) parts.push(postalCode);
+  if (country) parts.push(country);
+
+  const formattedAddress = parts.length ? parts.join(", ") : String(data?.display_name || "").trim();
+  return {
+    formattedAddress,
+    street,
+    road,
+    area,
+    city,
+    state,
+    postalCode,
+    country,
+    landmark,
+    landmarkDistanceKm,
+  };
+};
+
 const getApproximateRoute = (originCoordinates, destinationCoordinates) => {
   const roadMultiplier = 1.35;
   const averageSpeedMetersPerSecond = 48_000 / 3600;
@@ -509,14 +580,27 @@ module.exports.reverseGeocode = async (ltd, lng) => {
           format: "jsonv2",
           zoom: 18,
           addressdetails: 1,
+          namedetails: 1,
+          extratags: 1,
+          layer: "address,poi",
           ...(GEOCODING_CONTACT_EMAIL ? { email: GEOCODING_CONTACT_EMAIL } : {}),
         },
       });
       const displayName = response.data?.display_name;
       if (displayName) {
-        const resolved = { ltd: lat, lng: lon, displayName, provider: "nominatim-reverse" };
+        const details = buildReverseGeocodeDetails(response.data, lat, lon);
+        const preferredAddress = details.formattedAddress || displayName;
+        const resolved = { ltd: lat, lng: lon, displayName: preferredAddress, provider: "nominatim-reverse" };
+        cacheResolvedPlace(preferredAddress, resolved);
         cacheResolvedPlace(displayName, resolved);
-        return { address: displayName, ltd: lat, lng: lon, source: "nominatim" };
+        return {
+          address: preferredAddress,
+          rawAddress: displayName,
+          ltd: lat,
+          lng: lon,
+          source: "nominatim",
+          ...details,
+        };
       }
     } catch (error) {
       disableProviderTemporarily("nominatim", error);
@@ -536,8 +620,28 @@ module.exports.reverseGeocode = async (ltd, lng) => {
     .map((place) => ({ place, km: distanceKm(lat, lon, Number(place.ltd), Number(place.lng)) }))
     .sort((a, b) => a.km - b.km)[0];
   if (nearest && nearest.km <= 8) {
+    const nearbyLandmark = nearestKnownLandmark(lat, lon);
+    const details = {
+      formattedAddress: nearest.place.displayName,
+      street: "",
+      road: "",
+      area: nearest.place.category === "area" ? nearest.place.name : "",
+      city: nearest.place.category === "city" ? nearest.place.name : "",
+      state: "",
+      postalCode: "",
+      country: SERVICE_AREA_NAME,
+      landmark: nearbyLandmark?.place?.name || (["landmark", "airport", "university", "hospital", "mall", "market", "hotel"].includes(nearest.place.category) ? nearest.place.name : ""),
+      landmarkDistanceKm: nearbyLandmark ? Math.round(nearbyLandmark.km * 10) / 10 : null,
+    };
     cacheResolvedPlace(nearest.place.displayName, { ltd: lat, lng: lon, displayName: nearest.place.displayName, provider: "nigeria-index-reverse" });
-    return { address: nearest.place.displayName, ltd: lat, lng: lon, source: "nigeria_index", distanceKm: Math.round(nearest.km * 10) / 10 };
+    return {
+      address: nearest.place.displayName,
+      ltd: lat,
+      lng: lon,
+      source: "nigeria_index",
+      distanceKm: Math.round(nearest.km * 10) / 10,
+      ...details,
+    };
   }
 
   const coordinateLabel = `Current location (${lat.toFixed(5)}, ${lon.toFixed(5)})`;
