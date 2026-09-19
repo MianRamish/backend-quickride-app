@@ -401,13 +401,11 @@ const buildPhotonDisplayName = (feature) => {
   return [...new Set(parts.map((part) => String(part).trim()).filter(Boolean))].join(", ");
 };
 
-const buildPhotonSearchParams = (input, userLocation = null, limit = 16) => {
-  const params = new URLSearchParams();
-  params.append("q", String(input || "").trim());
+const appendPhotonCommonParams = (params, userLocation = null, limit = 16) => {
   params.append("limit", String(limit));
   params.append("lang", "en");
   params.append("bbox", NIGERIA_BBOX);
-  for (const countryCode of MAP_COUNTRY_CODE_SET) params.append("countrycode", countryCode);
+  for (const countryCode of MAP_COUNTRY_CODE_SET) params.append("countrycode", countryCode.toUpperCase());
   ["house", "street", "locality", "district", "city", "other"].forEach((layer) => params.append("layer", layer));
 
   if (userLocation && isWithinServiceArea(userLocation)) {
@@ -416,8 +414,43 @@ const buildPhotonSearchParams = (input, userLocation = null, limit = 16) => {
     params.append("zoom", "14");
     params.append("location_bias_scale", "0.15");
   }
-
   return params;
+};
+
+const buildPhotonSearchParams = (input, userLocation = null, limit = 16) => {
+  const params = new URLSearchParams();
+  params.append("q", String(input || "").trim());
+  return appendPhotonCommonParams(params, userLocation, limit);
+};
+
+const parseStructuredStreetQuery = (input = "") => {
+  const clean = String(input || "").trim().replace(/,+\s*$/, "");
+  if (!clean) return null;
+
+  const houseMatch = clean.match(/^\s*(\d+[a-zA-Z]?(?:[-/]\d+[a-zA-Z]?)?)\s+(.+)$/);
+  if (houseMatch) {
+    return { housenumber: houseMatch[1], street: houseMatch[2].trim() };
+  }
+
+  if (looksLikeDetailedAddress(clean) || /\b(street|road|avenue|close|crescent|drive|lane|way)\b/i.test(clean)) {
+    return { street: clean };
+  }
+
+  return null;
+};
+
+const buildPhotonStructuredParams = (input, userLocation = null, limit = 16) => {
+  const parsed = parseStructuredStreetQuery(input);
+  if (!parsed) return null;
+  const params = new URLSearchParams();
+  if (parsed.housenumber) params.append("housenumber", parsed.housenumber);
+  params.append("street", parsed.street);
+  return appendPhotonCommonParams(params, userLocation, limit);
+};
+
+const requestPhotonFeatures = async (endpoint, params, timeout) => {
+  const response = await http.get(`${PHOTON_URL}${endpoint}`, { timeout, params });
+  return (response.data?.features || []).filter(isPhotonFeatureInServiceArea);
 };
 
 const isPhotonFeatureInServiceArea = (feature) => {
@@ -434,12 +467,23 @@ const isPhotonFeatureInServiceArea = (feature) => {
 const getPhotonResult = async (address, userLocation = null) => {
   if (!isProviderAvailable("photon")) return null;
   try {
-    const response = await http.get(`${PHOTON_URL}/api/`, {
-      timeout: GEOCODING_TIMEOUT_MS,
-      params: buildPhotonSearchParams(address, userLocation, 12),
-    });
+    let features = [];
+    const structuredParams = buildPhotonStructuredParams(address, userLocation, 12);
+    if (structuredParams) {
+      features = await requestPhotonFeatures("/structured", structuredParams, GEOCODING_TIMEOUT_MS);
+    }
+    if (!features.length) {
+      features = await requestPhotonFeatures("/api/", buildPhotonSearchParams(address, userLocation, 12), GEOCODING_TIMEOUT_MS);
+    }
+    if (!features.length) {
+      features = await requestPhotonFeatures(
+        "/api/",
+        buildPhotonSearchParams(`${address}, ${SERVICE_AREA_NAME}`, userLocation, 12),
+        GEOCODING_TIMEOUT_MS
+      );
+    }
 
-    const feature = (response.data?.features || []).find(isPhotonFeatureInServiceArea);
+    const feature = features[0];
     const coordinates = feature?.geometry?.coordinates;
     if (!coordinates || coordinates.length < 2) return null;
 
@@ -511,12 +555,56 @@ const getFirstAddressResult = async (address) => {
 const getPhotonSuggestions = async (input, userLocation = null) => {
   if (!isProviderAvailable("photon")) return [];
   try {
-    const response = await http.get(`${PHOTON_URL}/api/`, {
-      timeout: SUGGESTION_TIMEOUT_MS,
-      params: buildPhotonSearchParams(input, userLocation, 18),
-    });
-    return (response.data?.features || [])
-      .filter(isPhotonFeatureInServiceArea)
+    const featureGroups = [];
+
+    const structuredParams = buildPhotonStructuredParams(input, userLocation, 12);
+    if (structuredParams) {
+      featureGroups.push(await requestPhotonFeatures("/structured", structuredParams, SUGGESTION_TIMEOUT_MS));
+    }
+
+    featureGroups.push(
+      await requestPhotonFeatures("/api/", buildPhotonSearchParams(input, userLocation, 18), SUGGESTION_TIMEOUT_MS)
+    );
+
+    const currentCount = featureGroups.flat().length;
+    if (currentCount < 6) {
+      featureGroups.push(
+        await requestPhotonFeatures(
+          "/api/",
+          buildPhotonSearchParams(`${input}, ${SERVICE_AREA_NAME}`, userLocation, 18),
+          SUGGESTION_TIMEOUT_MS
+        )
+      );
+    }
+
+    return featureGroups
+      .flat()
+      .filter((feature, index, all) => {
+        const coordinates = feature?.geometry?.coordinates || [];
+        const props = feature?.properties || {};
+        const key = [
+          props.osm_type,
+          props.osm_id,
+          props.name,
+          props.street,
+          props.housenumber,
+          coordinates[0],
+          coordinates[1],
+        ].join("|");
+        return all.findIndex((candidate) => {
+          const candidateCoords = candidate?.geometry?.coordinates || [];
+          const candidateProps = candidate?.properties || {};
+          return [
+            candidateProps.osm_type,
+            candidateProps.osm_id,
+            candidateProps.name,
+            candidateProps.street,
+            candidateProps.housenumber,
+            candidateCoords[0],
+            candidateCoords[1],
+          ].join("|") === key;
+        }) === index;
+      })
       .map((feature) => {
         const displayName = buildPhotonDisplayName(feature);
         const coordinates = feature?.geometry?.coordinates;
@@ -531,7 +619,7 @@ const getPhotonSuggestions = async (input, userLocation = null) => {
         return displayName;
       })
       .filter(Boolean)
-      .slice(0, 6);
+      .slice(0, 8);
   } catch (error) {
     disableProviderTemporarily("photon", error);
     console.warn(`Photon suggestions unavailable (${error?.response?.status || error.code || error.message}). Using local Nigeria search.`);
