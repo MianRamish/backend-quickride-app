@@ -439,12 +439,33 @@ const parseStructuredStreetQuery = (input = "") => {
   return null;
 };
 
+const nearestSearchCity = (userLocation = null) => {
+  const point = userLocation && isWithinServiceArea(userLocation)
+    ? userLocation
+    : { ltd: 6.5244, lng: 3.3792 };
+
+  const city = NIGERIA_PLACES
+    .filter((place) => place.category === "city")
+    .map((place) => ({
+      place,
+      distance: calculateHaversineDistance(
+        { ltd: Number(point.ltd), lng: Number(point.lng) },
+        { ltd: Number(place.ltd), lng: Number(place.lng) }
+      ),
+    }))
+    .filter((item) => Number.isFinite(item.distance))
+    .sort((a, b) => a.distance - b.distance)[0];
+
+  return city?.place?.name || "Lagos";
+};
+
 const buildPhotonStructuredParams = (input, userLocation = null, limit = 16) => {
   const parsed = parseStructuredStreetQuery(input);
   if (!parsed) return null;
   const params = new URLSearchParams();
   if (parsed.housenumber) params.append("housenumber", parsed.housenumber);
   params.append("street", parsed.street);
+  params.append("city", nearestSearchCity(userLocation));
   return appendPhotonCommonParams(params, userLocation, limit);
 };
 
@@ -474,6 +495,14 @@ const getPhotonResult = async (address, userLocation = null) => {
     }
     if (!features.length) {
       features = await requestPhotonFeatures("/api/", buildPhotonSearchParams(address, userLocation, 12), GEOCODING_TIMEOUT_MS);
+    }
+    if (!features.length) {
+      const city = nearestSearchCity(userLocation);
+      features = await requestPhotonFeatures(
+        "/api/",
+        buildPhotonSearchParams(`${address}, ${city}, ${SERVICE_AREA_NAME}`, userLocation, 12),
+        GEOCODING_TIMEOUT_MS
+      );
     }
     if (!features.length) {
       features = await requestPhotonFeatures(
@@ -566,7 +595,18 @@ const getPhotonSuggestions = async (input, userLocation = null) => {
       await requestPhotonFeatures("/api/", buildPhotonSearchParams(input, userLocation, 18), SUGGESTION_TIMEOUT_MS)
     );
 
-    const currentCount = featureGroups.flat().length;
+    let currentCount = featureGroups.flat().length;
+    if (currentCount < 6) {
+      const city = nearestSearchCity(userLocation);
+      featureGroups.push(
+        await requestPhotonFeatures(
+          "/api/",
+          buildPhotonSearchParams(`${input}, ${city}, ${SERVICE_AREA_NAME}`, userLocation, 18),
+          SUGGESTION_TIMEOUT_MS
+        )
+      );
+      currentCount = featureGroups.flat().length;
+    }
     if (currentCount < 6) {
       featureGroups.push(
         await requestPhotonFeatures(
