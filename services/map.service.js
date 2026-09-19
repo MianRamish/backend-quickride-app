@@ -411,6 +411,9 @@ const getPhotonResult = async (address) => {
   }
 };
 
+const isNigeriaSuggestionText = (value = "") =>
+  /(^|,|\s)nigeria(?:\s|,|$)/i.test(String(value || "").trim());
+
 const getFirstAddressResult = async (address) => {
   const cleanAddress = String(address || "").trim();
   if (!cleanAddress) throw new Error("Address is required");
@@ -487,7 +490,11 @@ const getPhotonSuggestions = async (input) => {
   }
 };
 
-module.exports.getAddressCoordinate = async (address) => getFirstAddressResult(address);
+module.exports.getAddressCoordinate = async (address) => {
+  const result = await getFirstAddressResult(address);
+  assertWithinServiceArea(result, "selected");
+  return result;
+};
 
 module.exports.getDistanceTime = async (origin, destination, options = {}) => {
   if (!origin || !destination) throw new Error("Origin and destination are required");
@@ -538,7 +545,9 @@ module.exports.getAutoCompleteSuggestions = async (input, userLocation = null) =
     : "default";
   const cacheKey = `${normalizeText(cleanInput)}|${locationKey}`;
   const cached = suggestionCache.get(cacheKey);
-  if (cached && Date.now() - cached.createdAt < SUGGESTION_CACHE_TTL) return cached.items;
+  if (cached && Date.now() - cached.createdAt < SUGGESTION_CACHE_TTL) {
+    return (cached.items || []).filter(isNigeriaSuggestionText);
+  }
 
   const localSuggestions = getLocalPlaceSuggestions(cleanInput, 8, userLocation);
 
@@ -553,7 +562,9 @@ module.exports.getAutoCompleteSuggestions = async (input, userLocation = null) =
   // Unknown autocomplete queries fall back to Photon; production can replace this provider later.
   const remoteSuggestions = await getPhotonSuggestions(cleanInput);
 
-  const items = [...new Set([...localSuggestions, ...remoteSuggestions])].slice(0, 6);
+  const items = [...new Set([...localSuggestions, ...remoteSuggestions])]
+    .filter(isNigeriaSuggestionText)
+    .slice(0, 6);
   suggestionCache.set(cacheKey, { createdAt: Date.now(), items });
   return items;
 };
