@@ -149,7 +149,14 @@ const getLocalPlaceSuggestions = (input, limit = 6, userLocation = null) => {
     .map(({ place }) => place.displayName);
 };
 
-const getKnownPlaceResult = (address) => {
+const looksLikeDetailedAddress = (address = "") => {
+  const value = normalizeText(address);
+  if (!value) return false;
+  if (/\b\d{1,5}[a-z]?\b/.test(value)) return true;
+  return /\b(street|st|road|rd|avenue|ave|close|crescent|drive|way|lane|junction|estate|compound|layout|boulevard|highway|expressway)\b/.test(value);
+};
+
+const getKnownPlaceResult = (address, { allowContained = true } = {}) => {
   const key = normalizeText(address);
   if (!key) return null;
 
@@ -169,6 +176,8 @@ const getKnownPlaceResult = (address) => {
       provider: "nigeria-local-index",
     };
   }
+
+  if (!allowContained) return null;
 
   // A full suggestion string normally contains a distinctive place name.
   const contained = NIGERIA_PLACES
@@ -366,6 +375,51 @@ const getNominatimResult = async (address) => {
   }
 };
 
+const buildPhotonDisplayName = (feature) => {
+  const props = feature?.properties || {};
+  const houseStreet = [props.housenumber, props.street].filter(Boolean).join(" ").trim();
+  const primary = String(props.name || "").trim();
+  const firstPart =
+    houseStreet && primary && normalizeText(primary) !== normalizeText(props.street)
+      ? `${primary}, ${houseStreet}`
+      : houseStreet || primary || props.street || "";
+  const locality =
+    props.district ||
+    props.locality ||
+    props.city ||
+    props.county ||
+    "";
+  const parts = [
+    firstPart,
+    locality && normalizeText(locality) !== normalizeText(firstPart) ? locality : "",
+    props.city && normalizeText(props.city) !== normalizeText(locality) ? props.city : "",
+    props.state,
+    props.postcode,
+    props.country || SERVICE_AREA_NAME,
+  ].filter(Boolean);
+
+  return [...new Set(parts.map((part) => String(part).trim()).filter(Boolean))].join(", ");
+};
+
+const buildPhotonSearchParams = (input, userLocation = null, limit = 16) => {
+  const params = new URLSearchParams();
+  params.append("q", String(input || "").trim());
+  params.append("limit", String(limit));
+  params.append("lang", "en");
+  params.append("bbox", NIGERIA_BBOX);
+  for (const countryCode of MAP_COUNTRY_CODE_SET) params.append("countrycode", countryCode);
+  ["house", "street", "locality", "district", "city", "other"].forEach((layer) => params.append("layer", layer));
+
+  if (userLocation && isWithinServiceArea(userLocation)) {
+    params.append("lat", String(userLocation.ltd));
+    params.append("lon", String(userLocation.lng));
+    params.append("zoom", "14");
+    params.append("location_bias_scale", "0.15");
+  }
+
+  return params;
+};
+
 const isPhotonFeatureInServiceArea = (feature) => {
   const coordinates = feature?.geometry?.coordinates;
   if (!Array.isArray(coordinates) || coordinates.length < 2) return false;
@@ -377,22 +431,19 @@ const isPhotonFeatureInServiceArea = (feature) => {
   return true;
 };
 
-const getPhotonResult = async (address) => {
+const getPhotonResult = async (address, userLocation = null) => {
   if (!isProviderAvailable("photon")) return null;
   try {
     const response = await http.get(`${PHOTON_URL}/api/`, {
       timeout: GEOCODING_TIMEOUT_MS,
-      params: { q: `${address}, ${SERVICE_AREA_NAME}`, limit: 8, lang: "en", bbox: NIGERIA_BBOX },
+      params: buildPhotonSearchParams(address, userLocation, 12),
     });
 
     const feature = (response.data?.features || []).find(isPhotonFeatureInServiceArea);
     const coordinates = feature?.geometry?.coordinates;
     if (!coordinates || coordinates.length < 2) return null;
 
-    const props = feature.properties || {};
-    const displayName = [props.name, props.city, props.state, props.country]
-      .filter(Boolean)
-      .join(", ");
+    const displayName = buildPhotonDisplayName(feature);
 
     const resolved = {
       ltd: Number(coordinates[1]),
@@ -415,6 +466,7 @@ const isNigeriaSuggestionText = (value = "") =>
 const getFirstAddressResult = async (address) => {
   const cleanAddress = String(address || "").trim();
   if (!cleanAddress) throw new Error("Address is required");
+  const detailedAddress = looksLikeDetailedAddress(cleanAddress);
 
   const coordinateResult = parseCoordinateAddress(cleanAddress);
   if (coordinateResult) return { ...coordinateResult, displayName: cleanAddress };
@@ -422,15 +474,15 @@ const getFirstAddressResult = async (address) => {
   const cachedPlace = getCachedPlace(cleanAddress);
   if (cachedPlace) return cachedPlace;
 
-  const knownPlaceResult = getKnownPlaceResult(cleanAddress);
+  const knownPlaceResult = getKnownPlaceResult(cleanAddress, { allowContained: !detailedAddress });
   if (knownPlaceResult) return knownPlaceResult;
 
   const localCandidates = getLocalPlaceSuggestions(cleanAddress, 6);
-  if (localCandidates.length === 1) {
+  if (!detailedAddress && localCandidates.length === 1) {
     const uniqueLocalResult = getKnownPlaceResult(localCandidates[0]);
     if (uniqueLocalResult) return uniqueLocalResult;
   }
-  if (localCandidates.length > 1) {
+  if (!detailedAddress && localCandidates.length > 1) {
     const error = new Error(`"${cleanAddress}" is too broad. Please select a specific location from the suggestions.`);
     error.code = "AMBIGUOUS_LOCATION";
     throw error;
@@ -456,18 +508,17 @@ const getFirstAddressResult = async (address) => {
   );
 };
 
-const getPhotonSuggestions = async (input) => {
+const getPhotonSuggestions = async (input, userLocation = null) => {
   if (!isProviderAvailable("photon")) return [];
   try {
     const response = await http.get(`${PHOTON_URL}/api/`, {
       timeout: SUGGESTION_TIMEOUT_MS,
-      params: { q: `${input}, ${SERVICE_AREA_NAME}`, limit: 12, lang: "en", bbox: NIGERIA_BBOX },
+      params: buildPhotonSearchParams(input, userLocation, 18),
     });
     return (response.data?.features || [])
       .filter(isPhotonFeatureInServiceArea)
       .map((feature) => {
-        const props = feature.properties || {};
-        const displayName = [props.name, props.city, props.state, props.country || SERVICE_AREA_NAME].filter(Boolean).join(", ");
+        const displayName = buildPhotonDisplayName(feature);
         const coordinates = feature?.geometry?.coordinates;
         if (displayName && Array.isArray(coordinates) && coordinates.length >= 2) {
           cacheResolvedPlace(displayName, {
@@ -569,20 +620,18 @@ module.exports.getAutoCompleteSuggestions = async (input, userLocation = null) =
 
   const localSuggestions = getLocalPlaceSuggestions(cleanInput, 8, userLocation);
 
-  // Known Nigerian places should feel instant and must not depend on public providers.
-  if (localSuggestions.length > 0) {
-    const items = localSuggestions.slice(0, 6);
-    suggestionCache.set(cacheKey, { createdAt: Date.now(), items });
-    return items;
-  }
+  // Search Photon as well as the local index so street, road and house-level
+  // OpenStreetMap results are not hidden by a matching city or area.
+  const remoteSuggestions = await getPhotonSuggestions(cleanInput, userLocation);
 
-  // Public Nominatim is used only for one-off geocoding, not type-ahead autocomplete.
-  // Unknown autocomplete queries fall back to Photon; production can replace this provider later.
-  const remoteSuggestions = await getPhotonSuggestions(cleanInput);
+  const detailedQuery = looksLikeDetailedAddress(cleanInput);
+  const orderedSuggestions = detailedQuery
+    ? [...remoteSuggestions, ...localSuggestions]
+    : [...localSuggestions.slice(0, 3), ...remoteSuggestions, ...localSuggestions.slice(3)];
 
-  const items = [...new Set([...localSuggestions, ...remoteSuggestions])]
+  const items = [...new Set(orderedSuggestions)]
     .filter(isNigeriaSuggestionText)
-    .slice(0, 6);
+    .slice(0, 8);
   suggestionCache.set(cacheKey, { createdAt: Date.now(), items });
   return items;
 };
