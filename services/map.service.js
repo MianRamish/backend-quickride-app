@@ -12,6 +12,7 @@ const MAP_COUNTRY_CODES = (process.env.MAP_COUNTRY_CODES || "ng")
   .map((code) => code.trim().toLowerCase())
   .filter(Boolean)
   .join(",");
+const MAP_COUNTRY_CODE_SET = new Set(MAP_COUNTRY_CODES.split(",").filter(Boolean));
 
 const NIGERIA_BBOX = process.env.MAP_SEARCH_BBOX || "2.4,4.2,14.7,13.9";
 const bboxParts = NIGERIA_BBOX.split(",").map(Number);
@@ -367,15 +368,26 @@ const getNominatimResult = async (address) => {
   }
 };
 
+const isPhotonFeatureInServiceArea = (feature) => {
+  const coordinates = feature?.geometry?.coordinates;
+  if (!Array.isArray(coordinates) || coordinates.length < 2) return false;
+  const point = { ltd: Number(coordinates[1]), lng: Number(coordinates[0]) };
+  if (!isWithinServiceArea(point)) return false;
+
+  const countryCode = String(feature?.properties?.countrycode || feature?.properties?.countryCode || "").trim().toLowerCase();
+  if (countryCode && MAP_COUNTRY_CODE_SET.size && !MAP_COUNTRY_CODE_SET.has(countryCode)) return false;
+  return true;
+};
+
 const getPhotonResult = async (address) => {
   if (!isProviderAvailable("photon")) return null;
   try {
     const response = await http.get(`${PHOTON_URL}/api/`, {
       timeout: GEOCODING_TIMEOUT_MS,
-      params: { q: address, limit: 1, lang: "en", bbox: NIGERIA_BBOX },
+      params: { q: `${address}, ${SERVICE_AREA_NAME}`, limit: 8, lang: "en", bbox: NIGERIA_BBOX },
     });
 
-    const feature = response.data?.features?.[0];
+    const feature = (response.data?.features || []).find(isPhotonFeatureInServiceArea);
     const coordinates = feature?.geometry?.coordinates;
     if (!coordinates || coordinates.length < 2) return null;
 
@@ -448,12 +460,13 @@ const getPhotonSuggestions = async (input) => {
   try {
     const response = await http.get(`${PHOTON_URL}/api/`, {
       timeout: SUGGESTION_TIMEOUT_MS,
-      params: { q: input, limit: 6, lang: "en", bbox: NIGERIA_BBOX },
+      params: { q: `${input}, ${SERVICE_AREA_NAME}`, limit: 12, lang: "en", bbox: NIGERIA_BBOX },
     });
     return (response.data?.features || [])
+      .filter(isPhotonFeatureInServiceArea)
       .map((feature) => {
         const props = feature.properties || {};
-        const displayName = [props.name, props.city, props.state, props.country].filter(Boolean).join(", ");
+        const displayName = [props.name, props.city, props.state, props.country || SERVICE_AREA_NAME].filter(Boolean).join(", ");
         const coordinates = feature?.geometry?.coordinates;
         if (displayName && Array.isArray(coordinates) && coordinates.length >= 2) {
           cacheResolvedPlace(displayName, {
@@ -465,7 +478,8 @@ const getPhotonSuggestions = async (input) => {
         }
         return displayName;
       })
-      .filter(Boolean);
+      .filter(Boolean)
+      .slice(0, 6);
   } catch (error) {
     disableProviderTemporarily("photon", error);
     console.warn(`Photon suggestions unavailable (${error?.response?.status || error.code || error.message}). Using local Nigeria search.`);
