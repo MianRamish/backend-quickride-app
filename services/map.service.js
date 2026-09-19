@@ -325,12 +325,10 @@ const getApproximateRoute = (originCoordinates, destinationCoordinates) => {
     duration: { text: formatDuration(duration), value: Math.round(duration) },
     originCoordinates,
     destinationCoordinates,
-    route: [
-      [originCoordinates.ltd, originCoordinates.lng],
-      [destinationCoordinates.ltd, destinationCoordinates.lng],
-    ],
+    route: [],
     provider: "approximate-free-fallback",
     approximate: true,
+    routeUnavailable: true,
   };
 };
 
@@ -511,29 +509,49 @@ module.exports.getDistanceTime = async (origin, destination, options = {}) => {
 
   const coordinates = `${originCoordinates.lng},${originCoordinates.ltd};${destinationCoordinates.lng},${destinationCoordinates.ltd}`;
 
-  try {
-    const response = await http.get(`${OSRM_URL}/route/v1/driving/${coordinates}`, {
-      timeout: 7000,
-      params: { overview: "full", geometries: "geojson", alternatives: false, steps: false },
-    });
+  let lastRoutingError = null;
+  for (const timeout of [7000, 12000]) {
+    try {
+      const response = await http.get(`${OSRM_URL}/route/v1/driving/${coordinates}`, {
+        timeout,
+        params: {
+          overview: "full",
+          geometries: "geojson",
+          alternatives: false,
+          steps: false,
+          continue_straight: "default",
+        },
+      });
 
-    const route = response.data?.routes?.[0];
-    if (!route) throw new Error(response.data?.message || "No OSRM route found");
+      const route = response.data?.routes?.[0];
+      if (!route) throw new Error(response.data?.message || "No OSRM route found");
 
-    const routeCoordinates = (route.geometry?.coordinates || []).map(([lng, lat]) => [lat, lng]);
-    return {
-      distance: { text: formatDistance(route.distance), value: Math.round(route.distance) },
-      duration: { text: formatDuration(route.duration), value: Math.round(route.duration) },
-      originCoordinates,
-      destinationCoordinates,
-      route: routeCoordinates,
-      provider: "openstreetmap-osrm",
-      approximate: false,
-    };
-  } catch (err) {
-    console.warn("OSRM route unavailable, using approximate route:", err.message);
-    return getApproximateRoute(originCoordinates, destinationCoordinates);
+      const routeCoordinates = (route.geometry?.coordinates || [])
+        .map(([lng, lat]) => [Number(lat), Number(lng)])
+        .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+
+      if (routeCoordinates.length < 3) {
+        throw new Error("Routing provider returned incomplete road geometry");
+      }
+
+      return {
+        distance: { text: formatDistance(route.distance), value: Math.round(route.distance) },
+        duration: { text: formatDuration(route.duration), value: Math.round(route.duration) },
+        originCoordinates,
+        destinationCoordinates,
+        route: routeCoordinates,
+        provider: "openstreetmap-osrm",
+        approximate: false,
+        routeUnavailable: false,
+      };
+    } catch (err) {
+      lastRoutingError = err;
+      console.warn(`OSRM route attempt failed after ${timeout}ms:`, err.message);
+    }
   }
+
+  console.warn("OSRM route unavailable after retry, using estimate without navigation line:", lastRoutingError?.message);
+  return getApproximateRoute(originCoordinates, destinationCoordinates);
 };
 
 module.exports.getAutoCompleteSuggestions = async (input, userLocation = null) => {
