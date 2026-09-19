@@ -568,7 +568,7 @@ module.exports.reverseGeocode = async (ltd, lng) => {
   const lat = Number(ltd);
   const lon = Number(lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error("Valid coordinates are required");
-  assertWithinServiceArea({ ltd: lat, lng: lon }, "pickup");
+  const serviceAvailable = isWithinServiceArea({ ltd: lat, lng: lon });
 
   if (isProviderAvailable("nominatim")) {
     try {
@@ -599,6 +599,8 @@ module.exports.reverseGeocode = async (ltd, lng) => {
           ltd: lat,
           lng: lon,
           source: "nominatim",
+          serviceAvailable,
+          serviceArea: SERVICE_AREA_NAME,
           ...details,
         };
       }
@@ -639,6 +641,8 @@ module.exports.reverseGeocode = async (ltd, lng) => {
       ltd: lat,
       lng: lon,
       source: "nigeria_index",
+      serviceAvailable,
+      serviceArea: SERVICE_AREA_NAME,
       distanceKm: Math.round(nearest.km * 10) / 10,
       ...details,
     };
@@ -646,5 +650,22 @@ module.exports.reverseGeocode = async (ltd, lng) => {
 
   const coordinateLabel = `Current location (${lat.toFixed(5)}, ${lon.toFixed(5)})`;
   cacheResolvedPlace(coordinateLabel, { ltd: lat, lng: lon, displayName: coordinateLabel, provider: "coordinates" });
-  return { address: coordinateLabel, ltd: lat, lng: lon, source: "coordinates" };
+  return {
+    address: coordinateLabel,
+    ltd: lat,
+    lng: lon,
+    source: "coordinates",
+    serviceAvailable,
+    serviceArea: SERVICE_AREA_NAME,
+    formattedAddress: coordinateLabel,
+    street: "",
+    road: "",
+    area: "",
+    city: "",
+    state: "",
+    postalCode: "",
+    country: "",
+    landmark: "",
+    landmarkDistanceKm: null,
+  };
 };
